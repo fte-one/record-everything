@@ -126,6 +126,9 @@ struct MediaRow: View {
                     IconButton(symbol: "trash", help: L("Delete"), action: onDelete)
                     IconButton(symbol: "airplayaudio", help: L("Send via AirDrop")) { Sharing.airDrop(item.url) }
                     ShareButton(url: item.url)
+                    IconButton(symbol: "icloud.and.arrow.up", help: L("Upload and copy link"), tint: Theme.accent) {
+                        UploadManager.shared.upload(item)
+                    }
                 }
                 .padding(.top, 4)
             }

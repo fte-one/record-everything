@@ -20,6 +20,19 @@ final class AppSettings: ObservableObject {
     @Published var stopHotKey: HotKeyCombo {
         didSet { store(stopHotKey, "stopHotKey"); HotKeyCenter.shared.reload() }
     }
+    @Published var captureUploadHotKey: HotKeyCombo {
+        didSet { store(captureUploadHotKey, "captureUploadHotKey"); HotKeyCenter.shared.reload() }
+    }
+    @Published var captureAnnotateHotKey: HotKeyCombo {
+        didSet { store(captureAnnotateHotKey, "captureAnnotateHotKey"); HotKeyCenter.shared.reload() }
+    }
+    @Published var upload: UploadSettings {
+        didSet { store(upload, "upload") }
+    }
+    /// Off: the app lives in the menu bar only, like Dropshare.
+    @Published var showDockIcon: Bool {
+        didSet { defaults.set(showDockIcon, forKey: "showDockIcon"); applyActivationPolicy() }
+    }
     @Published var capture: CaptureOptions {
         didSet { store(capture, "capture") }
     }
@@ -36,6 +49,10 @@ final class AppSettings: ObservableObject {
         saveFolder = defaults.string(forKey: "saveFolder").map { URL(fileURLWithPath: $0, isDirectory: true) } ?? movies
         startPauseHotKey = Self.load("startPauseHotKey") ?? .defaultStartPause
         stopHotKey = Self.load("stopHotKey") ?? .defaultStop
+        captureUploadHotKey = Self.load("captureUploadHotKey") ?? .defaultCaptureUpload
+        captureAnnotateHotKey = Self.load("captureAnnotateHotKey") ?? .defaultCaptureAnnotate
+        upload = Self.load("upload") ?? UploadSettings()
+        showDockIcon = defaults.object(forKey: "showDockIcon") as? Bool ?? false
         capture = Self.load("capture") ?? CaptureOptions()
         var cam = CaptureOptions()
         cam.camera = true
@@ -44,6 +61,10 @@ final class AppSettings: ObservableObject {
         var audio = CaptureOptions()
         audio.systemAudio = false
         audioWindowOptions = Self.load("audioWindowOptions") ?? audio
+    }
+
+    func applyActivationPolicy() {
+        NSApp.setActivationPolicy(showDockIcon ? .regular : .accessory)
     }
 
     /// Creates the save folder on demand and returns it.

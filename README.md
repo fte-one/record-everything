@@ -10,6 +10,15 @@ Mikrofon mitschneiden, Aufnahmen in einer Bibliothek verwalten, abspielen und sc
 
 ## Funktionen
 
+- **Bildschirmfoto & hochladen** (⌘→): Bereich aufziehen oder Fenster anklicken, das Bild landet auf
+  Cloudflare R2 und der Link ist sofort in der Zwischenablage.
+- **Bildschirmfoto & markieren** (⌘←): Editor mit Pfeil, Rechteck, Ellipse, Marker, Stift, Text, Verpixeln
+  und Zuschneiden; danach „Hochladen“ (Link in die Zwischenablage) oder „Kopieren“ (Bild in die
+  Zwischenablage).
+- **Menüleiste**: Popup mit diesen Schnellaktionen, Bildschirm-, Webcam- und Audioaufnahme sowie den
+  letzten Uploads zum erneuten Kopieren. Wahlweise ohne Dock-Symbol.
+- **Aufnahmen hochladen**: In der Bibliothek lädt ein Klick Videos und Audios hoch und kopiert den Link.
+
 - **Bildschirm**: Vollbild-Overlay mit Fenstererkennung, frei aufziehbarem Bereich, Griffen, Lupe mit
   Koordinaten und Seitenverhältnissen (3:4, 4:3, 9:16, 16:9, ganzer Bildschirm, frei). Leiste mit
   Breite × Höhe, Auflösung (720P bis 4K), Bildrate (15 bis 60 FPS) sowie Schaltern für Mauszeiger,
@@ -110,6 +119,20 @@ Test ohne GitHub: einen lokalen Appcast bereitstellen und die App mit
 `open "build/Record Everything.app" --args -RecordEverythingFeedURL http://127.0.0.1:8765/appcast.xml`
 starten.
 
+## Hochladen einrichten (Cloudflare R2)
+
+1. Im Cloudflare-Dashboard unter **R2 › API-Tokens verwalten** ein Token mit „Object Read & Write“ für
+   den Bucket anlegen. Es liefert Access Key ID und Secret Access Key.
+2. In Record Everything: **Einstellungen › Hochladen**: Account-ID, Bucket, die beiden Schlüssel und die
+   öffentliche URL eintragen, unter der die Dateien des Buckets erreichbar sind (z. B. eine eigene Domain
+   oder die `r2.dev`-Adresse des Buckets, etwa `https://example.com/files/`), dann
+   „Sichern & Verbindung testen“. Ab Werk ist nichts vorbelegt.
+
+Die Schlüssel liegen im Schlüsselbund. Hochgeladen wird über die S3-API von R2
+(`https://<Account-ID>.r2.cloudflarestorage.com`, Signatur v4). Der Dateiname folgt dem Muster
+`%month%%random-5%` (z. B. `10aB3xZ.png`); weitere Platzhalter: `%random-N%`, `%day%`, `%year%`,
+`%date%`, `%time%`, `%filename%`. Andere S3-kompatible Speicher gehen über „Endpunkt“ und „Region“.
+
 ## Berechtigungen
 
 Beim ersten Start fragt macOS nach:
@@ -126,7 +149,11 @@ Prüft die Aufnahme-Engine ohne Bedienung und schreibt Ergebnis und Metadaten al
 open "build/Record Everything.app" --args -RecordEverythingSelfTest screen -RecordEverythingSelfTestOutput /tmp/result.json
 ```
 
-Modi: `screen`, `region`, `pause`, `audio`; `-RecordEverythingSelfTestMic YES` nimmt das Mikrofon mit auf.
+Modi: `screen`, `region`, `pause`, `audio`, `screenshot`, `upload`, `annotate`, `popover`, `settings`;
+`-RecordEverythingSelfTestMic YES` nimmt das Mikrofon mit auf. `upload` braucht einen Test-Endpunkt
+(`-RecordEverythingTestEndpoint`, `-RecordEverythingTestBucket`, `-RecordEverythingTestPublic`,
+`-RecordEverythingTestAccessKey`, `-RecordEverythingTestSecret`) und lässt Zwischenablage und Verlauf
+unverändert.
 
 ## Aufbau
 
@@ -134,8 +161,10 @@ Modi: `screen`, `region`, `pause`, `audio`; `-RecordEverythingSelfTestMic YES` n
 Sources/RecordEverything/
   App/        Start, Menüs, Koordinator, Einstellungen, Hotkeys, Fensterverwaltung, Updater, Selbsttest
   Capture/    Recorder, ScreenCaptureKit-Stream, Kamera, Mikrofon, AVAssetWriter, Ton-Mix
+  Upload/     S3-Client (SigV4), Upload-Ablauf und Verlauf, Schlüsselbund, Bildschirmfotos, Einblendungen
   Model/      Aufnahme-Optionen, Bibliothek (JSON in Application Support)
-  UI/         Startfenster, Overlay und Leiste, Aufnahme-Elemente, Kamera/Audio, Player, Editor, Einstellungen
+  UI/         Startfenster, Overlay und Leiste, Aufnahme-Elemente, Kamera/Audio, Player, Video- und
+              Markierungs-Editor, Menüleisten-Popup, Einstellungen
 Resources/    Lokalisierungen (de, en) und App-Icon
 Support/      Info.plist und Entitlements
 scripts/      build-app.sh, release.sh, fetch-sparkle.sh, make-icon.sh (Icon neu zeichnen)

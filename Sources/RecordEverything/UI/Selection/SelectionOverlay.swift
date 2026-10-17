@@ -13,9 +13,14 @@ final class SelectionOverlay {
     private(set) var isActive = false
     let bar = SelectionBarModel()
 
-    func begin(onConfirm: @escaping (ScreenTarget, NSScreen) -> Void, onCancel: @escaping () -> Void) {
+    /// Recording shows the setting bar and waits for the record button; screenshot fires on mouse up.
+    enum Mode { case recording, screenshot }
+    private(set) var mode: Mode = .recording
+
+    func begin(mode: Mode = .recording, onConfirm: @escaping (ScreenTarget, NSScreen) -> Void, onCancel: @escaping () -> Void) {
         guard !isActive else { return }
         isActive = true
+        self.mode = mode
         self.onConfirm = onConfirm
         self.onCancel = onCancel
         Task {
@@ -32,7 +37,7 @@ final class SelectionOverlay {
             let key = windows.first { $0.targetScreen == mouseScreen } ?? windows.first
             key?.makeKey()
             key?.makeFirstResponder(key?.contentView)
-            if AppSettings.shared.capture.camera { CameraBubble.shared.show(on: mouseScreen ?? NSScreen.main!) }
+            if mode == .recording, AppSettings.shared.capture.camera { CameraBubble.shared.show(on: mouseScreen ?? NSScreen.main!) }
         }
     }
 
@@ -48,10 +53,11 @@ final class SelectionOverlay {
         windows.compactMap { $0.contentView as? SelectionView }.first { $0.selection != nil }
     }
 
-    func confirm() {
+    func confirm(windowID: CGWindowID? = nil) {
         guard let view = activeView, let rect = view.selection else { return }
         let screen = view.screen
-        let target = ScreenTarget(displayID: screen.displayID, rect: rect.integral, backingScale: screen.backingScaleFactor)
+        let target = ScreenTarget(displayID: screen.displayID, rect: rect.integral, backingScale: screen.backingScaleFactor,
+                                  windowID: windowID)
         let cb = onConfirm
         close()
         cb?(target, screen)
@@ -133,8 +139,8 @@ final class SelectionView: NSView {
     private let image: CGImage?
 
     private(set) var selection: CGRect?
-    private var hoveredWindow: (rect: CGRect, title: String)?
-    private var windowRects: [(rect: CGRect, title: String)] = []
+    private var hoveredWindow: (rect: CGRect, title: String, id: CGWindowID)?
+    private var windowRects: [(rect: CGRect, title: String, id: CGWindowID)] = []
     private var mouse: CGPoint?
 
     private enum Drag {
@@ -165,7 +171,7 @@ final class SelectionView: NSView {
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    private var aspect: AspectPreset { AppSettings.shared.capture.aspect }
+    private var aspect: AspectPreset { overlay.mode == .screenshot ? .custom : AppSettings.shared.capture.aspect }
 
     // MARK: Windows under the cursor
 
@@ -183,7 +189,8 @@ final class SelectionView: NSView {
             guard local.width > 40, local.height > 40 else { continue }
             let owner = info[kCGWindowOwnerName as String] as? String ?? ""
             let name = info[kCGWindowName as String] as? String ?? ""
-            windowRects.append((local, name.isEmpty ? owner : "\(owner) – \(name)"))
+            let id = (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value ?? 0
+            windowRects.append((local, name.isEmpty ? owner : "\(owner) – \(name)", CGWindowID(id)))
         }
     }
 
@@ -247,6 +254,10 @@ final class SelectionView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         defer { drag = nil }
+        if overlay.mode == .screenshot {
+            screenshotMouseUp(event)
+            return
+        }
         if case .drawing = drag, !didDrag || (selection?.width ?? 0) < 8 || (selection?.height ?? 0) < 8 {
             // A click picks the window under the cursor, or the whole screen.
             let p = convert(event.locationInWindow, from: nil)
@@ -264,6 +275,23 @@ final class SelectionView: NSView {
         }
         if event.clickCount == 2, selection != nil { overlay.confirm() }
         window?.invalidateCursorRects(for: self)
+    }
+
+    /// Screenshot mode: a drag captures the area, a click captures the window under the pointer (or the screen).
+    private func screenshotMouseUp(_ event: NSEvent) {
+        guard case .drawing = drag else { return }
+        if didDrag, let sel = selection, sel.width >= 8, sel.height >= 8 {
+            overlay.confirm()
+            return
+        }
+        let p = convert(event.locationInWindow, from: nil)
+        if let hit = windowRects.first(where: { $0.rect.contains(p) }) {
+            setSelection(hit.rect, keepAspect: false)
+            overlay.confirm(windowID: hit.id)
+        } else {
+            setSelection(bounds, keepAspect: false)
+            overlay.confirm()
+        }
     }
 
     override func keyDown(with event: NSEvent) {
@@ -396,7 +424,7 @@ final class SelectionView: NSView {
     // MARK: Setting bar
 
     private func layoutBar() {
-        guard let sel = selection else { return }
+        guard overlay.mode == .recording, let sel = selection else { return }
         if barHost == nil {
             let host = NSHostingView(rootView: AnyView(SettingBarView(model: overlay.bar).environment(\.colorScheme, .dark).tint(Theme.accent)))
             addSubview(host)
@@ -437,7 +465,9 @@ final class SelectionView: NSView {
         }
 
         if selection == nil {
-            drawLabel(L("Click a window or drag to select an area · Esc to cancel"),
+            drawLabel(overlay.mode == .screenshot
+                      ? L("Screenshot: click a window or drag an area · Esc to cancel")
+                      : L("Click a window or drag to select an area · Esc to cancel"),
                       at: CGPoint(x: bounds.midX, y: 60), centered: true)
         }
 

@@ -72,6 +72,9 @@ struct MediaInfoView: View {
                 IconButton(symbol: "trash", size: 30, help: L("Delete")) { confirmDelete = true }
                 IconButton(symbol: "airplayaudio", size: 30, help: L("Send via AirDrop")) { Sharing.airDrop(item.url) }
                 ShareButton(url: item.url)
+                IconButton(symbol: "icloud.and.arrow.up", size: 30, help: L("Upload and copy link"), tint: Theme.accent) {
+                    UploadManager.shared.upload(item)
+                }
             }
 
             Spacer()

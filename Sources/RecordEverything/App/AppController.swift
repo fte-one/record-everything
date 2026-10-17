@@ -9,6 +9,7 @@ final class AppController: NSObject {
     static let shared = AppController()
 
     private var statusItem: NSStatusItem?
+    private let popover = NSPopover()
     private var cancellables: Set<AnyCancellable> = []
     private let recorder = Recorder.shared
     private var homeWasVisible = false
@@ -35,7 +36,14 @@ final class AppController: NSObject {
             return
         }
         _ = Updater.shared
-        showHome()
+        AppSettings.shared.applyActivationPolicy()
+        if AppSettings.shared.showDockIcon {
+            showHome()
+        } else if !UserDefaults.standard.bool(forKey: "menuBarHintShown") {
+            UserDefaults.standard.set(true, forKey: "menuBarHintShown")
+            Toast.shared.show(L("Record Everything is in the menu bar"), detail: L("Click the icon for screenshots, uploads and recordings."),
+                              symbol: "menubar.arrow.up.rectangle", style: .info, duration: 6)
+        }
     }
 
     // MARK: Windows
@@ -47,8 +55,9 @@ final class AppController: NSObject {
         }
     }
 
-    func showSettings() {
-        WindowManager.shared.show(id: "settings", title: L("Settings"), style: .init(size: NSSize(width: 480, height: 372))) {
+    func showSettings(tab: SettingsTab? = nil) {
+        if let tab { SettingsNavigation.shared.tab = tab }
+        WindowManager.shared.show(id: "settings", title: L("Settings"), style: .init(size: NSSize(width: 560, height: 470))) {
             SettingsView()
         }
     }
@@ -176,6 +185,10 @@ final class AppController: NSObject {
             if Countdown.shared.isRunning { Countdown.shared.cancel() }
             if SelectionOverlay.shared.isActive { SelectionOverlay.shared.cancel() }
             if recorder.isActive { Task { await recorder.stop() } }
+        case .captureUpload:
+            Screenshots.captureAndUpload()
+        case .captureAnnotate:
+            Screenshots.captureAndAnnotate()
         }
     }
 
@@ -191,34 +204,22 @@ final class AppController: NSObject {
         statusItem = item
     }
 
-    @objc private func statusItemClicked() {
-        let menu = NSMenu()
-        if recorder.isActive {
-            let pause = recorder.state == .paused ? L("Resume") : L("Pause")
-            menu.addItem(menuItem(pause, #selector(menuPause)))
-            menu.addItem(menuItem(L("Stop Recording"), #selector(menuStop)))
-        } else {
-            menu.addItem(menuItem(L("Record Screen"), #selector(menuRecordScreen)))
-            menu.addItem(menuItem(L("Record Webcam"), #selector(menuRecordCamera)))
-            menu.addItem(menuItem(L("Record Audio"), #selector(menuRecordAudio)))
-            menu.addItem(.separator())
-            menu.addItem(menuItem(L("Open Home Page"), #selector(menuHome)))
-            menu.addItem(menuItem(L("Settings…"), #selector(menuSettings)))
-            let update = NSMenuItem(title: L("Check for Updates…"), action: #selector(Updater.checkForUpdates(_:)), keyEquivalent: "")
-            update.target = Updater.shared
-            menu.addItem(update)
-            menu.addItem(.separator())
-            menu.addItem(NSMenuItem(title: L("Quit Record Everything"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: ""))
-        }
-        statusItem?.menu = menu
-        statusItem?.button?.performClick(nil)
-        statusItem?.menu = nil
-    }
+    /// Opens the popover with the quick actions and recent uploads (Dropshare's menu bar popup).
+    @objc private func statusItemClicked() { togglePopover() }
 
-    private func menuItem(_ title: String, _ action: Selector) -> NSMenuItem {
-        let i = NSMenuItem(title: title, action: action, keyEquivalent: "")
-        i.target = self
-        return i
+    /// `sticky` keeps the popover open while the app is inactive (self test only).
+    func togglePopover(sticky: Bool = false) {
+        guard let button = statusItem?.button else { return }
+        if popover.isShown {
+            popover.performClose(nil)
+            return
+        }
+        popover.behavior = sticky ? .applicationDefined : .transient
+        popover.animates = true
+        popover.contentViewController = NSHostingController(rootView: StatusPopoverView { [weak self] in self?.popover.performClose(nil) }
+            .environment(\.colorScheme, .dark).tint(Theme.accent))
+        NSApp.activate(ignoringOtherApps: true)
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
     private func updateStatusItem() {
@@ -240,8 +241,7 @@ final class AppController: NSObject {
     @objc func menuRecordAudio() { showAudioWindow() }
     @objc func menuHome() { showHome() }
     @objc func menuSettings() { showSettings() }
-    @objc private func menuPause() { recorder.togglePause() }
-    @objc private func menuStop() { Task { await recorder.stop() } }
+
 }
 
 extension Notification.Name {

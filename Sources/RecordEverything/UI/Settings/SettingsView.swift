@@ -1,57 +1,46 @@
 import AppKit
 import SwiftUI
 
-/// Settings window: save location, login item, hot keys, version.
+enum SettingsTab: String, CaseIterable, Identifiable {
+    case general, upload, shortcuts
+    var id: String { rawValue }
+}
+
+/// Which settings tab is shown; other parts of the app can jump to a tab.
+@MainActor
+final class SettingsNavigation: ObservableObject {
+    static let shared = SettingsNavigation()
+    @Published var tab: SettingsTab = .general
+}
+
+/// Settings window with General, Upload and Shortcuts tabs.
 struct SettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
+    @ObservedObject private var navigation = SettingsNavigation.shared
 
     var body: some View {
         VStack(spacing: 0) {
-            Text(L("Settings")).font(.system(size: 13, weight: .semibold)).frame(height: 38)
+            Picker("", selection: $navigation.tab) {
+                Text(L("General")).tag(SettingsTab.general)
+                Text(L("Upload")).tag(SettingsTab.upload)
+                Text(L("Shortcuts")).tag(SettingsTab.shortcuts)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 330)
+            .padding(.top, 36)
+            .padding(.bottom, 14)
 
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 14) {
-                GridRow {
-                    label(L("Save Location:"))
-                    HStack {
-                        Text(settings.saveFolder.path)
-                            .lineLimit(1).truncationMode(.middle)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Button { chooseFolder() } label: { Image(systemName: "folder") }.buttonStyle(.plain)
-                    }
-                    .padding(.horizontal, 8).padding(.vertical, 5)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Theme.tile))
-                }
-                GridRow {
-                    label(L("Startup:"))
-                    Toggle(L("Start at login"), isOn: Binding(get: { settings.launchAtLogin }, set: { settings.launchAtLogin = $0 }))
-                }
-                GridRow {
-                    label(L("Start/Pause Recording:"))
-                    HotKeyField(combo: $settings.startPauseHotKey)
-                }
-                GridRow {
-                    label(L("Stop Recording:"))
-                    HotKeyField(combo: $settings.stopHotKey)
-                }
-                GridRow {
-                    label(L("Updates:"))
-                    HStack {
-                        Toggle(L("Check automatically"), isOn: Binding(get: { Updater.shared.automaticallyChecks },
-                                                                      set: { Updater.shared.automaticallyChecks = $0; autoUpdateToggled.toggle() }))
-                            .id(autoUpdateToggled)
-                        Spacer()
-                        Button(L("Check Now")) { Updater.shared.checkForUpdates(nil) }
-                    }
-                }
-                GridRow {
-                    label(L("Version:"))
-                    Text(versionString)
+            Group {
+                switch navigation.tab {
+                case .general: GeneralSettings()
+                case .upload: UploadSettingsView()
+                case .shortcuts: ShortcutSettings()
                 }
             }
             .padding(.horizontal, 28)
-            .padding(.top, 8)
+            .frame(maxHeight: .infinity, alignment: .top)
 
-            Spacer()
             Rectangle().fill(Theme.separator).frame(height: 1)
             HStack {
                 Text("© 2026 Record Everything").font(.system(size: 11)).foregroundStyle(Theme.secondary)
@@ -62,22 +51,63 @@ struct SettingsView: View {
             }
             .padding(16)
         }
-        .frame(width: 480, height: 372)
+        .frame(width: 560, height: 470)
         .background(Theme.background)
         .ignoresSafeArea(edges: .top)
     }
+}
 
+private func settingsLabel(_ s: String) -> some View {
+    Text(s).foregroundStyle(Theme.secondary).gridColumnAlignment(.trailing)
+}
+
+private struct GeneralSettings: View {
+    @ObservedObject private var settings = AppSettings.shared
     @State private var autoUpdateToggled = false
+
+    var body: some View {
+        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 14) {
+            GridRow {
+                settingsLabel(L("Save Location:"))
+                HStack {
+                    Text(settings.saveFolder.path)
+                        .lineLimit(1).truncationMode(.middle)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button { chooseFolder() } label: { Image(systemName: "folder") }.buttonStyle(.plain)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Theme.tile))
+            }
+            GridRow {
+                settingsLabel(L("Startup:"))
+                Toggle(L("Start at login"), isOn: Binding(get: { settings.launchAtLogin }, set: { settings.launchAtLogin = $0 }))
+            }
+            GridRow {
+                settingsLabel(L("Dock:"))
+                Toggle(L("Show icon in the Dock"), isOn: $settings.showDockIcon)
+            }
+            GridRow {
+                settingsLabel(L("Updates:"))
+                HStack {
+                    Toggle(L("Check automatically"), isOn: Binding(get: { Updater.shared.automaticallyChecks },
+                                                                  set: { Updater.shared.automaticallyChecks = $0; autoUpdateToggled.toggle() }))
+                        .id(autoUpdateToggled)
+                    Spacer()
+                    Button(L("Check Now")) { Updater.shared.checkForUpdates(nil) }
+                }
+            }
+            GridRow {
+                settingsLabel(L("Version:"))
+                Text(versionString)
+            }
+        }
+    }
 
     private var versionString: String {
         let info = Bundle.main.infoDictionary
         let short = info?["CFBundleShortVersionString"] as? String ?? "–"
         let build = info?["CFBundleVersion"] as? String ?? "–"
         return "\(short) (\(build))"
-    }
-
-    private func label(_ s: String) -> some View {
-        Text(s).foregroundStyle(Theme.secondary).gridColumnAlignment(.trailing)
     }
 
     private func chooseFolder() {
@@ -88,6 +118,141 @@ struct SettingsView: View {
         panel.directoryURL = settings.saveFolder
         panel.prompt = L("Choose")
         if panel.runModal() == .OK, let url = panel.url { settings.saveFolder = url }
+    }
+}
+
+/// Cloudflare R2 (or any S3-compatible storage): where screenshots and recordings are uploaded.
+private struct UploadSettingsView: View {
+    @ObservedObject private var settings = AppSettings.shared
+    @ObservedObject private var uploads = UploadManager.shared
+    @State private var accessKey = ""
+    @State private var secret = ""
+    @State private var testState: TestState = .idle
+    @State private var showAdvanced = false
+
+    enum TestState: Equatable { case idle, running, ok(String), failed(String) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+                GridRow {
+                    settingsLabel(L("Account ID:"))
+                    TextField(L("Cloudflare account ID"), text: $settings.upload.accountID).textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    settingsLabel(L("Bucket:"))
+                    TextField("my-bucket", text: $settings.upload.bucket).textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    settingsLabel(L("Access Key ID:"))
+                    TextField("", text: $accessKey).textFieldStyle(.roundedBorder)
+                        .onSubmit { uploads.accessKeyID = accessKey }
+                }
+                GridRow {
+                    settingsLabel(L("Secret Access Key:"))
+                    SecureField("", text: $secret).textFieldStyle(.roundedBorder)
+                        .onSubmit { uploads.secretAccessKey = secret }
+                }
+                GridRow {
+                    settingsLabel(L("Public URL:"))
+                    TextField("https://example.com/files/", text: $settings.upload.publicBaseURL).textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    settingsLabel(L("File name:"))
+                    HStack {
+                        TextField("%month%%random-5%", text: $settings.upload.filenamePattern).textFieldStyle(.roundedBorder)
+                        Text(FilenamePattern.make(settings.upload.filenamePattern, fileExtension: "png"))
+                            .font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.secondary)
+                    }
+                }
+                GridRow {
+                    settingsLabel(L("After upload:"))
+                    Toggle(L("Play a sound"), isOn: $settings.upload.playSound)
+                }
+            }
+
+            DisclosureGroup(L("Other S3-compatible storage"), isExpanded: $showAdvanced) {
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+                    GridRow {
+                        settingsLabel(L("Endpoint:"))
+                        TextField(L("empty = Cloudflare R2"), text: $settings.upload.customEndpoint).textFieldStyle(.roundedBorder)
+                    }
+                    GridRow {
+                        settingsLabel(L("Region:"))
+                        TextField("auto", text: $settings.upload.region).textFieldStyle(.roundedBorder)
+                    }
+                }
+                .padding(.top, 6)
+            }
+            .font(.system(size: 12))
+
+            HStack(spacing: 10) {
+                Button(L("Save & test connection")) { saveAndTest() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(testState == .running)
+                switch testState {
+                case .idle: EmptyView()
+                case .running: ProgressView().controlSize(.small)
+                case .ok(let text):
+                    Label(text, systemImage: "checkmark.circle.fill").foregroundStyle(Theme.accent).font(.system(size: 12))
+                case .failed(let text):
+                    Label(text, systemImage: "xmark.octagon.fill").foregroundStyle(Theme.record).font(.system(size: 12)).lineLimit(2)
+                }
+            }
+            Text(L("The keys of an R2 API token (Object Read & Write) are stored in your keychain."))
+                .font(.system(size: 11)).foregroundStyle(Theme.secondary)
+        }
+        .onAppear {
+            accessKey = uploads.accessKeyID
+            secret = uploads.secretAccessKey
+        }
+        .onDisappear {
+            uploads.accessKeyID = accessKey
+            uploads.secretAccessKey = secret
+        }
+    }
+
+    private func saveAndTest() {
+        uploads.accessKeyID = accessKey
+        uploads.secretAccessKey = secret
+        testState = .running
+        Task {
+            do {
+                _ = try await uploads.testConnection()
+                testState = .ok(L("Connection works"))
+            } catch {
+                testState = .failed(error.localizedDescription)
+            }
+        }
+    }
+}
+
+private struct ShortcutSettings: View {
+    @ObservedObject private var settings = AppSettings.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 14) {
+                GridRow {
+                    settingsLabel(L("Screenshot & upload:"))
+                    HotKeyField(combo: $settings.captureUploadHotKey)
+                }
+                GridRow {
+                    settingsLabel(L("Screenshot & annotate:"))
+                    HotKeyField(combo: $settings.captureAnnotateHotKey)
+                }
+                GridRow {
+                    settingsLabel(L("Start/Pause Recording:"))
+                    HotKeyField(combo: $settings.startPauseHotKey)
+                }
+                GridRow {
+                    settingsLabel(L("Stop Recording:"))
+                    HotKeyField(combo: $settings.stopHotKey)
+                }
+            }
+            Text(L("A shortcut works in one app at a time. Quit Dropshare if it uses the same keys."))
+                .font(.system(size: 11)).foregroundStyle(Theme.secondary)
+        }
     }
 }
 

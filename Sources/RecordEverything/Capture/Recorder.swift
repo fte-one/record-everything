@@ -22,6 +22,8 @@ struct ScreenTarget {
     var displayID: CGDirectDisplayID
     var rect: CGRect
     var backingScale: CGFloat
+    /// Set when a screenshot targets one window (click on a window).
+    var windowID: CGWindowID? = nil
 }
 
 /// Orchestrates one recording session for screen, camera or audio.
