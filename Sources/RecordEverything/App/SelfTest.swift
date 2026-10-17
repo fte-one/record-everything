@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import ScreenCaptureKit
 import SwiftUI
 
 /// Headless check of the recording engine:
@@ -140,9 +141,12 @@ enum SelfTest {
         case "popover":
             try? await Task.sleep(for: .seconds(1.5))
             AppController.shared.togglePopover(sticky: true)
-            let renderer = ImageRenderer(content: StatusPopoverView {}.environment(\.colorScheme, .dark).tint(Theme.accent))
-            renderer.scale = 2
-            if let cg = renderer.cgImage, let png = Screenshots.pngData(cg) {
+            try? await Task.sleep(for: .seconds(2))
+            if let number = AppController.shared.popoverWindowNumber,
+               let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
+               let window = content.windows.first(where: { Int($0.windowID) == number }),
+               let cg = try? await Screenshots.captureWindow(window),
+               let png = Screenshots.pngData(cg) {
                 let out = (UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "x") + ".png"
                 try? png.write(to: URL(fileURLWithPath: out))
                 result["image"] = out

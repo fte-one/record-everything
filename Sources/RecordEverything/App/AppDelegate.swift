@@ -9,7 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag { AppController.shared.showHome() }
+        if !flag { AppController.shared.togglePopover() }
         return true
     }
 
@@ -54,7 +54,7 @@ enum MainMenu {
         fileMenu.addItem(item(L("Record Webcam"), "", c, #selector(AppController.menuRecordCamera)))
         fileMenu.addItem(item(L("Record Audio"), "", c, #selector(AppController.menuRecordAudio)))
         fileMenu.addItem(.separator())
-        fileMenu.addItem(item(L("Open Home Page"), "0", c, #selector(AppController.menuHome)))
+        fileMenu.addItem(item(L("Open Menu"), "0", c, #selector(AppController.menuOpenMenu)))
         fileMenu.addItem(withTitle: L("Close Window"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         fileItem.submenu = fileMenu
         main.addItem(fileItem)

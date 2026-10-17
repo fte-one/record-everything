@@ -20,6 +20,14 @@ enum Screenshots {
         }
     }
 
+    /// Area or window -> image on the clipboard.
+    static func captureAndCopy() {
+        select { image in
+            copy(image)
+            Toast.shared.show(L("Image copied"), symbol: "doc.on.clipboard.fill", style: .success, duration: 1.8)
+        }
+    }
+
     /// Area or window -> annotation editor (upload or copy from there).
     static func captureAndAnnotate() {
         select { image in AnnotationEditor.open(image: image) }
@@ -65,6 +73,17 @@ enum Screenshots {
             config.width = Int(target.rect.width * scale)
             config.height = Int(target.rect.height * scale)
         }
+        return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+    }
+
+    /// Captures one window on its own (also windows of this app).
+    static func captureWindow(_ window: SCWindow) async throws -> CGImage {
+        let filter = SCContentFilter(desktopIndependentWindow: window)
+        let config = SCStreamConfiguration()
+        let scale = CGFloat(filter.pointPixelScale)
+        config.width = Int(window.frame.width * scale)
+        config.height = Int(window.frame.height * scale)
+        config.showsCursor = false
         return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
     }
 

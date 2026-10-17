@@ -15,9 +15,11 @@ Mikrofon mitschneiden, Aufnahmen in einer Bibliothek verwalten, abspielen und sc
 - **Bildschirmfoto & markieren** (⌘←): Editor mit Pfeil, Rechteck, Ellipse, Marker, Stift, Text, Verpixeln
   und Zuschneiden; danach „Hochladen“ (Link in die Zwischenablage) oder „Kopieren“ (Bild in die
   Zwischenablage).
-- **Menüleiste**: Popup mit diesen Schnellaktionen, Bildschirm-, Webcam- und Audioaufnahme sowie den
-  letzten Uploads zum erneuten Kopieren. Wahlweise ohne Dock-Symbol.
-- **Aufnahmen hochladen**: In der Bibliothek lädt ein Klick Videos und Audios hoch und kopiert den Link.
+- **Bildschirmfoto & kopieren**: ein Klick, das Bild liegt in der Zwischenablage.
+- **Menüleiste als Zentrale**: Das Popup bündelt die drei Bildschirmfoto-Aktionen, Bildschirm-, Kamera-
+  und Audioaufnahme sowie umschaltbar die letzten **Uploads** (Link kopieren, im Browser öffnen) und die
+  **Aufnahmen** (öffnen, schneiden, hochladen, im Finder zeigen, AirDrop, löschen). Wahlweise ohne
+  Dock-Symbol.
 
 - **Bildschirm**: Vollbild-Overlay mit Fenstererkennung, frei aufziehbarem Bereich, Griffen, Lupe mit
   Koordinaten und Seitenverhältnissen (3:4, 4:3, 9:16, 16:9, ganzer Bildschirm, frei). Leiste mit
@@ -27,8 +29,8 @@ Mikrofon mitschneiden, Aufnahmen in einer Bibliothek verwalten, abspielen und sc
   Zeit, Pause, Stopp; blendet sich ab), Webcam-Bubble zum Verschieben und Skalieren, Zeit in der
   Menüleiste, Ruhezustand wird verhindert.
 - **Kamera** und **Audio** als eigene Fenster, Audio mit Segment-Pegelanzeige; Audio landet als `.m4a`.
-- **Bibliothek**: Liste mit Vorschaubild, Größe, Dauer und Format; Im Finder zeigen, Löschen
-  (wahlweise mit Datei), AirDrop, Teilen.
+- **Aufnahmen-Liste** im Menüleisten-Popup mit Vorschaubild, Größe, Dauer und Format; Löschen wahlweise
+  mit Datei.
 - **Info-Fenster** mit Player und Metadaten, Umbenennen (auch der Datei).
 - **Editor**: Zeitleiste mit Vorschaubildern, Auswahl mit Griffen, „Nur Auswahl behalten“,
   „Auswahl entfernen“, Widerrufen, Ton aus; Sichern oder Sichern unter.

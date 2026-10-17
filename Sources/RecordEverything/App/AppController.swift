@@ -12,7 +12,6 @@ final class AppController: NSObject {
     private let popover = NSPopover()
     private var cancellables: Set<AnyCancellable> = []
     private let recorder = Recorder.shared
-    private var homeWasVisible = false
 
     func launch() {
         setupStatusItem()
@@ -37,9 +36,7 @@ final class AppController: NSObject {
         }
         _ = Updater.shared
         AppSettings.shared.applyActivationPolicy()
-        if AppSettings.shared.showDockIcon {
-            showHome()
-        } else if !UserDefaults.standard.bool(forKey: "menuBarHintShown") {
+        if !UserDefaults.standard.bool(forKey: "menuBarHintShown") {
             UserDefaults.standard.set(true, forKey: "menuBarHintShown")
             Toast.shared.show(L("Record Everything is in the menu bar"), detail: L("Click the icon for screenshots, uploads and recordings."),
                               symbol: "menubar.arrow.up.rectangle", style: .info, duration: 6)
@@ -47,13 +44,6 @@ final class AppController: NSObject {
     }
 
     // MARK: Windows
-
-    func showHome() {
-        WindowManager.shared.show(id: "home", title: "Record Everything",
-                                  style: .init(size: NSSize(width: 404, height: 584), minSize: NSSize(width: 404, height: 480), resizable: true)) {
-            HomeView()
-        }
-    }
 
     func showSettings(tab: SettingsTab? = nil) {
         if let tab { SettingsNavigation.shared.tab = tab }
@@ -108,15 +98,9 @@ final class AppController: NSObject {
             showPermissionWindow()
             return
         }
-        let home = WindowManager.shared.window("home")
-        homeWasVisible = home?.isVisible ?? false
-        home?.orderOut(nil)
         SelectionOverlay.shared.begin(
             onConfirm: { [weak self] target, screen in self?.runCountdown(target: target, screen: screen) },
-            onCancel: { [weak self] in
-                CameraBubble.shared.hide()
-                self?.restoreHome()
-            })
+            onCancel: { CameraBubble.shared.hide() })
     }
 
     private func runCountdown(target: ScreenTarget, screen: NSScreen) {
@@ -127,7 +111,6 @@ final class AppController: NSObject {
                 self.beginScreenRecording(target: target, screen: screen, globalRect: globalRect)
             } else {
                 CameraBubble.shared.hide()
-                self.restoreHome()
             }
         }
     }
@@ -143,7 +126,6 @@ final class AppController: NSObject {
                 RecordBar.shared.show(on: screen, avoiding: globalRect)
             } catch {
                 CameraBubble.shared.hide()
-                restoreHome()
                 presentError(error)
             }
         }
@@ -153,12 +135,11 @@ final class AppController: NSObject {
         RecordBar.shared.hide()
         RegionFrame.shared.hide()
         CameraBubble.shared.hide()
-        showHome()
-        if let item { NotificationCenter.default.post(name: .recordingAdded, object: item.id) }
-    }
-
-    private func restoreHome() {
-        if homeWasVisible { WindowManager.shared.window("home")?.makeKeyAndOrderFront(nil) }
+        if let item {
+            NotificationCenter.default.post(name: .recordingAdded, object: item.id)
+            Toast.shared.show(L("Recording saved"), detail: item.title + " · " + L("in the menu under Recordings"),
+                              symbol: "film.fill", style: .success, duration: 3)
+        }
     }
 
     func presentError(_ error: Error) {
@@ -208,6 +189,9 @@ final class AppController: NSObject {
     @objc private func statusItemClicked() { togglePopover() }
 
     /// `sticky` keeps the popover open while the app is inactive (self test only).
+    /// Window of the open popover (self test screenshots).
+    var popoverWindowNumber: Int? { popover.isShown ? popover.contentViewController?.view.window?.windowNumber : nil }
+
     func togglePopover(sticky: Bool = false) {
         guard let button = statusItem?.button else { return }
         if popover.isShown {
@@ -239,7 +223,7 @@ final class AppController: NSObject {
     @objc func menuRecordScreen() { startScreenFlow() }
     @objc func menuRecordCamera() { showCameraWindow() }
     @objc func menuRecordAudio() { showAudioWindow() }
-    @objc func menuHome() { showHome() }
+    @objc func menuOpenMenu() { togglePopover() }
     @objc func menuSettings() { showSettings() }
 
 }

@@ -173,3 +173,17 @@
 "Uploading is not set up yet. Add your Cloudflare R2 details in the settings." = "Der Upload ist noch nicht eingerichtet. Trag deine Cloudflare-R2-Daten in den Einstellungen ein.";
 "Uploading…" = "Wird hochgeladen …";
 "empty = Cloudflare R2" = "leer = Cloudflare R2";
+
+/* Menu bar as main surface (1.1) */
+"Annotate" = "Markieren";
+"Copy image" = "Bild kopieren";
+"Delete…" = "Löschen …";
+"Open" = "Öffnen";
+"Open Menu" = "Menü öffnen";
+"Record" = "Aufnehmen";
+"Recording saved" = "Aufnahme gespeichert";
+"Screenshot" = "Bildschirmfoto";
+"Upload & copy link" = "Hochladen & Link kopieren";
+"Uploads" = "Uploads";
+"in the menu under Recordings" = "im Menü unter Aufnahmen";
+"one click" = "ein Klick";
