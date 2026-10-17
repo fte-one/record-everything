@@ -9,6 +9,7 @@ struct StatusPopoverView: View {
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var uploads = UploadManager.shared
     @AppStorage("popoverListTab") private var listTab = "uploads"
+    var listHeight: CGFloat = 300
     let dismiss: () -> Void
 
     var body: some View {
@@ -63,7 +64,7 @@ struct StatusPopoverView: View {
                         }
                     }
                 }
-                .frame(height: 300)
+                .frame(height: listHeight)
             }
 
             Divider()
@@ -78,7 +79,9 @@ struct StatusPopoverView: View {
         }
         .padding(16)
         .frame(width: 420)
-        .background(Theme.background)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Theme.background))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.12)))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .onAppear { library.load() }
     }
 

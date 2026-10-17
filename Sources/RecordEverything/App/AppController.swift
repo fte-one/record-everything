@@ -9,7 +9,7 @@ final class AppController: NSObject {
     static let shared = AppController()
 
     private var statusItem: NSStatusItem?
-    private let popover = NSPopover()
+    private let menuPanel = MenuPanelController()
     private var cancellables: Set<AnyCancellable> = []
     private let recorder = Recorder.shared
 
@@ -185,10 +185,9 @@ final class AppController: NSObject {
         statusItem = item
     }
 
-    /// Opens the popover with the quick actions and recent uploads (Dropshare's menu bar popup).
+    /// Opens the menu with the quick actions, recent uploads and recordings (Dropshare's menu bar popup).
     @objc private func statusItemClicked() { togglePopover() }
 
-    /// `sticky` keeps the popover open while the app is inactive (self test only).
     /// Global frame of the menu bar icon (self test screenshots).
     var statusItemFrame: CGRect? { statusItem?.button?.window?.frame }
 
@@ -199,21 +198,12 @@ final class AppController: NSObject {
         statusItem?.button?.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
     }
 
-    /// Window of the open popover (self test screenshots).
-    var popoverWindowNumber: Int? { popover.isShown ? popover.contentViewController?.view.window?.windowNumber : nil }
+    /// Window of the open menu (self test screenshots).
+    var popoverWindowNumber: Int? { menuPanel.windowNumber }
 
+    /// Shows or hides the menu below the menu bar. `sticky` keeps it open while the app is inactive (self test only).
     func togglePopover(sticky: Bool = false) {
-        guard let button = statusItem?.button else { return }
-        if popover.isShown {
-            popover.performClose(nil)
-            return
-        }
-        popover.behavior = sticky ? .applicationDefined : .transient
-        popover.animates = true
-        popover.contentViewController = NSHostingController(rootView: StatusPopoverView { [weak self] in self?.popover.performClose(nil) }
-            .environment(\.colorScheme, .dark).tint(Theme.accent))
-        NSApp.activate(ignoringOtherApps: true)
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        menuPanel.toggle(anchor: statusItem?.button, sticky: sticky)
     }
 
     private func updateStatusItem() {
