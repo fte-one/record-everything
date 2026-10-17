@@ -1,0 +1,4 @@
+/* Record Everything – Info.plist, Deutsch */
+"NSHumanReadableCopyright" = "© 2026 fte.one c/o OK Venture GmbH. Alle Rechte vorbehalten.";
+"NSCameraUsageDescription" = "Record Everything nutzt die Kamera, um deine Webcam aufzunehmen.";
+"NSMicrophoneUsageDescription" = "Record Everything nutzt das Mikrofon, um deine Stimme aufzunehmen.";

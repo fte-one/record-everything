@@ -34,7 +34,7 @@ enum MainMenu {
 
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: L("About Record Everything"), action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(item(L("About Record Everything"), "", c, #selector(AppController.menuAbout)))
         appMenu.addItem(item(L("Check for Updates…"), "", Updater.shared, #selector(Updater.checkForUpdates(_:))))
         appMenu.addItem(.separator())
         appMenu.addItem(item(L("Settings…"), ",", c, #selector(AppController.menuSettings)))

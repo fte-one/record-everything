@@ -43,7 +43,12 @@ struct SettingsView: View {
 
             Rectangle().fill(Theme.separator).frame(height: 1)
             HStack {
-                Text("© 2026 Record Everything").font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                HStack(spacing: 8) {
+                    Text(Brand.copyright)
+                    Link(L("Imprint"), destination: Brand.imprintURL)
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.secondary)
                 Spacer()
                 Button(L("OK")) { WindowManager.shared.close("settings") }
                     .keyboardShortcut(.defaultAction)
@@ -234,11 +239,11 @@ private struct ShortcutSettings: View {
         VStack(alignment: .leading, spacing: 14) {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 14) {
                 GridRow {
-                    settingsLabel(L("Screenshot & upload:"))
+                    settingsLabel(L("Screenshot and copy link:"))
                     HotKeyField(combo: $settings.captureUploadHotKey)
                 }
                 GridRow {
-                    settingsLabel(L("Screenshot & annotate:"))
+                    settingsLabel(L("Screenshot and annotate:"))
                     HotKeyField(combo: $settings.captureAnnotateHotKey)
                 }
                 GridRow {

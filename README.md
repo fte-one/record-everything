@@ -10,13 +10,13 @@ Mikrofon mitschneiden, Aufnahmen in einer Bibliothek verwalten, abspielen und sc
 
 ## Funktionen
 
-- **Bildschirmfoto & hochladen** (⌘→): Bereich aufziehen oder Fenster anklicken, das Bild landet auf
-  Cloudflare R2 und der Link ist sofort in der Zwischenablage.
-- **Bildschirmfoto & markieren** (⌘←): Editor mit Pfeil, Rechteck, Ellipse, Marker, Stift, Text, Verpixeln
-  und Zuschneiden; danach „Hochladen“ (Link in die Zwischenablage) oder „Kopieren“ (Bild in die
-  Zwischenablage).
-- **Bildschirmfoto & kopieren**: ein Klick, das Bild liegt in der Zwischenablage.
-- **Menüleiste als Zentrale**: Das Popup bündelt die drei Bildschirmfoto-Aktionen, Bildschirm-, Kamera-
+- **Screenshot und markieren** (⌘←): Bereich aufziehen oder Fenster anklicken, dann Editor mit Pfeil,
+  Rechteck, Ellipse, Marker, Stift, Text, Verpixeln und Zuschneiden; danach „Hochladen“ (Link in die
+  Zwischenablage) oder „Kopieren“ (Bild in die Zwischenablage).
+- **Screenshot und Link kopieren** (⌘→): Das Bild landet auf Cloudflare R2, der Link ist sofort in der
+  Zwischenablage.
+- **Screenshot und Bild kopieren**: ein Klick, das Bild liegt in der Zwischenablage.
+- **Menüleiste als Zentrale**: Das Menü bündelt die drei Screenshot-Aktionen, Bildschirm-, Kamera-
   und Audioaufnahme sowie umschaltbar die letzten **Uploads** (Link kopieren, im Browser öffnen) und die
   **Aufnahmen** (öffnen, schneiden, hochladen, im Finder zeigen, AirDrop, löschen). Wahlweise ohne
   Dock-Symbol.
@@ -172,3 +172,8 @@ Support/      Info.plist und Entitlements
 scripts/      build-app.sh, release.sh, fetch-sparkle.sh, make-icon.sh (Icon neu zeichnen)
 Vendor/       Sparkle (nicht eingecheckt, kommt von fetch-sparkle.sh)
 ```
+
+---
+
+© 2026 [fte.one](https://fte.one) c/o OK Venture GmbH · [Impressum](https://fte.one/de/impressum/) ·
+Gemacht von Menschen & Agenten

@@ -224,6 +224,7 @@ final class AppController: NSObject {
     @objc func menuRecordCamera() { showCameraWindow() }
     @objc func menuRecordAudio() { showAudioWindow() }
     @objc func menuOpenMenu() { togglePopover() }
+    @objc func menuAbout() { Brand.showAbout() }
     @objc func menuSettings() { showSettings() }
 
 }

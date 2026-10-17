@@ -12,6 +12,12 @@ enum Theme {
     static let accent = Color(red: 0.133, green: 0.753, blue: 0.478)
     static let accentNS = NSColor(srgbRed: 0.133, green: 0.753, blue: 0.478, alpha: 1)
     static let level = accent
+    static let cyan = Color(red: 0.24, green: 0.78, blue: 0.95)
+    static let violet = Color(red: 0.62, green: 0.45, blue: 1.0)
+    /// fte.one brand colors (logo and offset shadows on the website).
+    static let fteGreen = Color(red: 0.255, green: 1.0, blue: 0.141)   // #41FF24
+    static let fteRed = Color(red: 1.0, green: 0.231, blue: 0.188)     // #FF3B30
+    static let fteShadow = Color(red: 0.0, green: 1.0, blue: 0.529)    // #00FF87
     static let secondary = Color.white.opacity(0.55)
 }
 

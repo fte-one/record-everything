@@ -152,9 +152,7 @@
 "Remove from list" = "Aus der Liste entfernen";
 "Save & test connection" = "Sichern & Verbindung testen";
 "Screenshot & annotate" = "Foto & markieren";
-"Screenshot & annotate:" = "Foto & markieren:";
 "Screenshot & upload" = "Foto & hochladen";
-"Screenshot & upload:" = "Foto & hochladen:";
 "Screenshot failed" = "Bildschirmfoto fehlgeschlagen";
 "Screenshot: click a window or drag an area · Esc to cancel" = "Bildschirmfoto: Fenster anklicken oder Bereich aufziehen · Esc bricht ab";
 "Secret Access Key:" = "Secret Access Key:";
@@ -175,15 +173,23 @@
 "empty = Cloudflare R2" = "leer = Cloudflare R2";
 
 /* Menu bar as main surface (1.1) */
-"Annotate" = "Markieren";
-"Copy image" = "Bild kopieren";
 "Delete…" = "Löschen …";
 "Open" = "Öffnen";
 "Open Menu" = "Menü öffnen";
 "Record" = "Aufnehmen";
 "Recording saved" = "Aufnahme gespeichert";
 "Screenshot" = "Bildschirmfoto";
-"Upload & copy link" = "Hochladen & Link kopieren";
 "Uploads" = "Uploads";
 "in the menu under Recordings" = "im Menü unter Aufnahmen";
 "one click" = "ein Klick";
+
+/* fte.one (1.1) */
+"Crafted by humans & agents" = "Gemacht von Menschen & Agenten";
+"Imprint" = "Impressum";
+"Screenshot and copy link" = "Screenshot und Link kopieren";
+"Screenshot and copy image" = "Screenshot und Bild kopieren";
+"Screenshot and copy link:" = "Screenshot und Link kopieren:";
+"History" = "Verlauf";
+"Screenshot and annotate" = "Screenshot und markieren";
+"Screenshot and annotate:" = "Screenshot und markieren:";
+"Screenshots" = "Screenshots";
