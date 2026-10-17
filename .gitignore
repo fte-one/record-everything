@@ -1,0 +1,15 @@
+# Build output
+build/
+dist/
+
+# macOS
+.DS_Store
+
+# Local Claude Code settings
+.claude/settings.local.json
+
+# Local analysis notes (not published)
+docs/
+
+# Sparkle (scripts/fetch-sparkle.sh)
+Vendor/
