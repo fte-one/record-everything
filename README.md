@@ -17,9 +17,13 @@ Mikrofon mitschneiden, Aufnahmen in einer Bibliothek verwalten, abspielen und sc
   Zwischenablage.
 - **Screenshot & Bild kopieren** (⌘↓): Das Bild liegt sofort in der Zwischenablage.
 - **Menüleiste als Zentrale**: Das Menü bündelt die drei Screenshot-Aktionen, Bildschirm-, Kamera-
-  und Audioaufnahme sowie umschaltbar die letzten **Uploads** (Link kopieren, im Browser öffnen) und die
+  und Audioaufnahme sowie umschaltbar die letzten **Uploads** (Link kopieren, im Browser öffnen; beim
+  Überfahren des Vorschaubilds erscheint das hochgeladene Bild groß neben dem Menü) und die
   **Aufnahmen** (öffnen, schneiden, hochladen, im Finder zeigen, AirDrop, löschen). Einstellungen,
-  Info und Beenden stecken im Zahnrad-Menü. Wahlweise ohne Dock-Symbol.
+  Updates, Info und Beenden stecken im Zahnrad-Menü. Wahlweise ohne Dock-Symbol.
+- **Klare Stimme**: Nach dem Stoppen wird das Mikrofon über die ganze Aufnahme gemessen und auf eine
+  deutliche Sprechlautstärke gebracht (etwa −19 LUFS, bis +30 dB), mit Trittschallfilter, sanfter
+  Rauschabsenkung in Sprechpausen und Limiter. Systemton tritt zurück, solange gesprochen wird.
 
 - **Bildschirm**: Vollbild-Overlay mit Fenstererkennung, frei aufziehbarem Bereich, Griffen, Lupe mit
   Koordinaten und Seitenverhältnissen (3:4, 4:3, 9:16, 16:9, ganzer Bildschirm, frei). Leiste mit
@@ -42,8 +46,8 @@ Mikrofon mitschneiden, Aufnahmen in einer Bibliothek verwalten, abspielen und sc
 
 Technik: ScreenCaptureKit für Bild und Systemton, AVCaptureSession für Kamera und Mikrofon,
 AVAssetWriter mit H.264 (High, CABAC, Keyframe alle 2 s, Bitrate B × H × FPS × 0,08) und AAC 48 kHz.
-Pausen werden über Zeitstempel-Versatz herausgeschnitten; System- und Mikrofonton werden beim Stoppen
-zu einer Spur gemischt. Aufnahmen landen in `~/Movies/Record Everything`.
+Pausen werden über Zeitstempel-Versatz herausgeschnitten; System- und Mikrofonton landen in getrennten
+Spuren und werden beim Stoppen zu einer Spur gerendert (Stimme angehoben, Systemton geduckt). Aufnahmen landen in `~/Movies/Record Everything`.
 
 ## Voraussetzungen
 
@@ -151,7 +155,9 @@ Prüft die Aufnahme-Engine ohne Bedienung und schreibt Ergebnis und Metadaten al
 open "build/Record Everything.app" --args -RecordEverythingSelfTest screen -RecordEverythingSelfTestOutput /tmp/result.json
 ```
 
-Modi: `screen`, `region`, `pause`, `audio`, `screenshot`, `upload`, `annotate`, `popover`, `settings`;
+Modi: `screen`, `region`, `pause`, `audio`, `screenshot`, `upload`, `annotate`, `popover`, `preview`,
+`settings`, `voicemix` (Ton einer vorhandenen Datei rendern: `-RecordEverythingSelfTestInput <Datei>`,
+`-RecordEverythingSelfTestTracks system,microphone`; schreibt eine Kopie);
 `-RecordEverythingSelfTestMic YES` nimmt das Mikrofon mit auf. `upload` braucht einen Test-Endpunkt
 (`-RecordEverythingTestEndpoint`, `-RecordEverythingTestBucket`, `-RecordEverythingTestPublic`,
 `-RecordEverythingTestAccessKey`, `-RecordEverythingTestSecret`) und lässt Zwischenablage und Verlauf

@@ -140,12 +140,12 @@ struct StatusPopoverView: View {
 
     private var footer: some View {
         HStack {
-            Button(L("Check for Updates…")) { run { Updater.shared.checkForUpdates(nil) } }
             Spacer()
             Button { run { Brand.showAbout() } } label: {
                 FteWordmark()
             }
             .help(L("About Record Everything"))
+            Spacer()
         }
         .buttonStyle(.plain)
         .font(.system(size: 12))
@@ -200,7 +200,7 @@ private struct KeyCaps: View {
     }
 }
 
-/// Gear in the header: settings, about and – deliberately tucked away – quit.
+/// Gear in the header: settings, updates, about and – deliberately tucked away – quit.
 private struct GearMenu: View {
     let run: (@escaping () -> Void) -> Void
     @State private var hover = false
@@ -208,6 +208,7 @@ private struct GearMenu: View {
     var body: some View {
         Menu {
             Button(L("Settings…")) { run { AppController.shared.showSettings() } }
+            Button(L("Check for Updates…")) { run { Updater.shared.checkForUpdates(nil) } }
             Button(L("About Record Everything")) { run { Brand.showAbout() } }
             Divider()
             Button(L("Quit Record Everything")) { NSApp.terminate(nil) }
@@ -408,6 +409,14 @@ private struct UploadRow: View {
             .frame(width: 52, height: 34)
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .background(RoundedRectangle(cornerRadius: 4).fill(Color.black.opacity(0.3)))
+            .onHover { inside in
+                if inside {
+                    UploadPreview.shared.show(record, anchorY: NSEvent.mouseLocation.y)
+                } else {
+                    UploadPreview.shared.hide(record.id)
+                }
+            }
+            .onDisappear { UploadPreview.shared.hide(record.id) }
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(record.fileName).font(.system(size: 12, weight: .medium)).lineLimit(1).truncationMode(.middle)

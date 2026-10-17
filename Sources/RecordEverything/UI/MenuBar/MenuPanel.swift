@@ -56,6 +56,7 @@ final class MenuPanelController: NSObject, NSWindowDelegate {
     }
 
     func close() {
+        UploadPreview.shared.hide()
         panel?.orderOut(nil)
         panel?.contentView = nil
     }

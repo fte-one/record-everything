@@ -231,13 +231,16 @@ final class Recorder: ObservableObject {
         let ok: Bool = await withCheckedContinuation { cont in
             captureQueue.async { writer.finish(at: stopTime, minimumDuration: 1.0) { cont.resume(returning: $0) } }
         }
-        lastTrackCounts = await withCheckedContinuation { cont in
-            captureQueue.async { cont.resume(returning: Dictionary(uniqueKeysWithValues: writer.appendedCounts.map { ("\($0.key)", $0.value) })) }
+        let counts: [RecordingWriter.Track: Int] = await withCheckedContinuation { cont in
+            captureQueue.async { cont.resume(returning: writer.appendedCounts) }
         }
+        lastTrackCounts = Dictionary(uniqueKeysWithValues: counts.map { ("\($0.key)", $0.value) })
         var item: MediaItem?
         if ok {
             do {
-                try await AudioMixdown.mixIfNeeded(url: writer.url, fileType: kind == .audio ? .m4a : .mp4)
+                let tracks = writer.audioTracks.map { ($0, counts[$0, default: 0]) }
+                let result = try await AudioMixdown.finish(url: writer.url, fileType: kind == .audio ? .m4a : .mp4, tracks: tracks)
+                NSLog("Record Everything: voice \(result.speechLevel.map { "\($0) dBFS" } ?? "–"), noise \(result.noiseFloor.map { "\($0) dBFS" } ?? "–"), gain \(result.gainDB) dB")
             } catch {
                 NSLog("Record Everything: audio mixdown failed, keeping separate tracks: \(error)")
             }

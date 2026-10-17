@@ -12,6 +12,8 @@ final class RecordingWriter {
     }
 
     let url: URL
+    /// Audio tracks in the order they were added to the file.
+    let audioTracks: [Track]
     private let writer: AVAssetWriter
     private var inputs: [Track: AVAssetWriterInput] = [:]
     private let hasVideo: Bool
@@ -30,6 +32,7 @@ final class RecordingWriter {
 
     init(url: URL, fileType: AVFileType, video: VideoFormat?, audioTracks: [Track]) throws {
         self.url = url
+        self.audioTracks = audioTracks
         try? FileManager.default.removeItem(at: url)
         writer = try AVAssetWriter(outputURL: url, fileType: fileType)
         writer.shouldOptimizeForNetworkUse = true

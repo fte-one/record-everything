@@ -15,12 +15,12 @@ enum SelfTest {
         let output = UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "recordeverything-selftest.json"
         Task {
             var result: [String: Any] = ["mode": mode]
-            if ["upload", "screenshot", "annotate", "popover", "settings", "menubaricon"].contains(mode) {
+            if ["upload", "screenshot", "annotate", "popover", "settings", "menubaricon", "voicemix", "preview"].contains(mode) {
                 await runExtra(mode, into: &result)
                 if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]) {
                     try? data.write(to: URL(fileURLWithPath: output))
                 }
-                if !["annotate", "popover", "settings"].contains(mode) { NSApp.terminate(nil) }
+                if !["annotate", "popover", "settings", "preview"].contains(mode) { NSApp.terminate(nil) }
                 return
             }
             do {
@@ -167,6 +167,64 @@ enum SelfTest {
             result["ok"] = !files.isEmpty
         case "settings":
             AppController.shared.showSettings(tab: .upload)
+            result["ok"] = true
+        case "voicemix":
+            // Runs the final audio rendering on a copy of -RecordEverythingSelfTestInput; the audio tracks are
+            // described by -RecordEverythingSelfTestTracks, e.g. "system,microphone".
+            let input = URL(fileURLWithPath: UserDefaults.standard.string(forKey: "RecordEverythingSelfTestInput") ?? "")
+            let copy = URL(fileURLWithPath: (UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "x")
+                           + "." + input.pathExtension)
+            try? FileManager.default.removeItem(at: copy)
+            let kinds = (UserDefaults.standard.string(forKey: "RecordEverythingSelfTestTracks") ?? "microphone").split(separator: ",")
+            let tracks: [(RecordingWriter.Track, Int)] = kinds.map { ($0 == "system" ? .system : .microphone, 1) }
+            do {
+                try FileManager.default.copyItem(at: input, to: copy)
+                let started = Date()
+                let mix = try await AudioMixdown.finish(url: copy, fileType: input.pathExtension == "m4a" ? .m4a : .mp4, tracks: tracks)
+                result["seconds"] = Date().timeIntervalSince(started)
+                result["speechLevel"] = mix.speechLevel.map { Double($0) } ?? NSNull()
+                result["noiseFloor"] = mix.noiseFloor.map { Double($0) } ?? NSNull()
+                result["gainDB"] = Double(mix.gainDB)
+                result["path"] = copy.path
+                result["ok"] = true
+            } catch {
+                result["error"] = "\(error)"
+                result["ok"] = false
+            }
+        case "preview":
+            // Opens the menu, shows the preview of the newest upload and captures menu and preview together.
+            try? await Task.sleep(for: .seconds(1.5))
+            AppController.shared.togglePopover(sticky: true)
+            try? await Task.sleep(for: .seconds(1))
+            if let record = UploadHistory.shared.records.first,
+               let menu = NSApp.windows.first(where: { $0 is MenuPanel && $0.isVisible }) {
+                UploadPreview.shared.show(record, anchorY: menu.frame.minY + menu.frame.height * 0.35)
+                try? await Task.sleep(for: .seconds(3))
+                // Both windows captured separately and placed on one picture as they sit on screen.
+                if let preview = UploadPreview.shared.frame, let previewNumber = UploadPreview.shared.windowNumber,
+                   let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) {
+                    let union = menu.frame.union(preview).insetBy(dx: -20, dy: -20)
+                    let scale = menu.backingScaleFactor
+                    if let ctx = CGContext(data: nil, width: Int(union.width * scale), height: Int(union.height * scale), bitsPerComponent: 8,
+                                           bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                           bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+                        ctx.setFillColor(NSColor(white: 0.35, alpha: 1).cgColor)
+                        ctx.fill(CGRect(x: 0, y: 0, width: ctx.width, height: ctx.height))
+                        for (number, frame) in [(menu.windowNumber, menu.frame), (previewNumber, preview)] {
+                            guard let window = content.windows.first(where: { Int($0.windowID) == number }),
+                                  let cg = try? await Screenshots.captureWindow(window) else { continue }
+                            ctx.draw(cg, in: CGRect(x: (frame.minX - union.minX) * scale, y: (frame.minY - union.minY) * scale,
+                                                    width: frame.width * scale, height: frame.height * scale))
+                        }
+                        if let cg = ctx.makeImage(), let png = Screenshots.pngData(cg) {
+                            let out = (UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "x") + ".png"
+                            try? png.write(to: URL(fileURLWithPath: out))
+                            result["image"] = out
+                        }
+                    }
+                }
+                result["record"] = record.fileName
+            }
             result["ok"] = true
         case "popover":
             try? await Task.sleep(for: .seconds(1.5))
