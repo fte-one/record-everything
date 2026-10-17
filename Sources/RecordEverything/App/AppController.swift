@@ -177,7 +177,7 @@ final class AppController: NSObject {
 
     private func setupStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: "Record Everything")
+        item.button?.image = MenuBarIcon.idle
         item.button?.imagePosition = .imageLeading
         item.button?.target = self
         item.button?.action = #selector(statusItemClicked)
@@ -189,6 +189,16 @@ final class AppController: NSObject {
     @objc private func statusItemClicked() { togglePopover() }
 
     /// `sticky` keeps the popover open while the app is inactive (self test only).
+    /// Global frame of the menu bar icon (self test screenshots).
+    var statusItemFrame: CGRect? { statusItem?.button?.window?.frame }
+
+    /// Shows the recording icons without recording (self test screenshots).
+    func previewStatusIcon(_ image: NSImage, title: String) {
+        statusItem?.button?.image = image
+        statusItem?.button?.title = title
+        statusItem?.button?.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+    }
+
     /// Window of the open popover (self test screenshots).
     var popoverWindowNumber: Int? { popover.isShown ? popover.contentViewController?.view.window?.windowNumber : nil }
 
@@ -210,12 +220,12 @@ final class AppController: NSObject {
         guard let button = statusItem?.button else { return }
         switch recorder.state {
         case .recording, .paused:
-            button.image = NSImage(systemSymbolName: recorder.state == .paused ? "pause.circle.fill" : "stop.circle.fill",
-                                   accessibilityDescription: L("Stop Recording"))
+            let icon = recorder.state == .paused ? MenuBarIcon.paused : MenuBarIcon.recording
+            if button.image !== icon { button.image = icon }
             button.title = " " + formatDuration(recorder.elapsed)
             button.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
         default:
-            button.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: "Record Everything")
+            if button.image !== MenuBarIcon.idle { button.image = MenuBarIcon.idle }
             button.title = ""
         }
     }

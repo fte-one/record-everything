@@ -15,7 +15,7 @@ enum SelfTest {
         let output = UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "recordeverything-selftest.json"
         Task {
             var result: [String: Any] = ["mode": mode]
-            if ["upload", "screenshot", "annotate", "popover", "settings"].contains(mode) {
+            if ["upload", "screenshot", "annotate", "popover", "settings", "menubaricon"].contains(mode) {
                 await runExtra(mode, into: &result)
                 if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]) {
                     try? data.write(to: URL(fileURLWithPath: output))
@@ -135,6 +135,36 @@ enum SelfTest {
                 result["ok"] = false
                 result["error"] = "\(error)"
             }
+        case "menubaricon":
+            try? await Task.sleep(for: .seconds(1.5))
+            var files: [String] = []
+            let base = UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "x"
+            for (name, image, title) in [("idle", MenuBarIcon.idle, ""), ("recording", MenuBarIcon.recording, " 00:01:23"),
+                                         ("paused", MenuBarIcon.paused, " 00:01:23")] {
+                AppController.shared.previewStatusIcon(image, title: title)
+                try? await Task.sleep(for: .milliseconds(600))
+                guard let frame = AppController.shared.statusItemFrame,
+                      let screen = NSScreen.screens.first(where: { $0.frame.intersects(frame) }),
+                      let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
+                      let display = content.displays.first(where: { $0.displayID == screen.displayID }) else { continue }
+                // The menu bar around the icon, including neighbours for comparison.
+                let local = screen.localRect(fromGlobal: frame.insetBy(dx: -90, dy: 0))
+                let config = SCStreamConfiguration()
+                let filter = SCContentFilter(display: display, excludingWindows: [])
+                config.sourceRect = local
+                config.width = Int(local.width * CGFloat(filter.pointPixelScale))
+                config.height = Int(local.height * CGFloat(filter.pointPixelScale))
+                config.showsCursor = false
+                if let cg = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config),
+                   let png = Screenshots.pngData(cg) {
+                    let out = base + "-\(name).png"
+                    try? png.write(to: URL(fileURLWithPath: out))
+                    files.append(out)
+                }
+            }
+            AppController.shared.previewStatusIcon(MenuBarIcon.idle, title: "")
+            result["images"] = files
+            result["ok"] = !files.isEmpty
         case "settings":
             AppController.shared.showSettings(tab: .upload)
             result["ok"] = true
