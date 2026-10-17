@@ -19,12 +19,12 @@ struct StatusPopoverView: View {
             if recorder.isActive { recordingControls }
 
             section("01", L("Screenshots")) {
-                QuickAction(symbol: "pencil.and.scribble", tint: Theme.accent, title: L("Screenshot and annotate"),
+                QuickAction(symbol: "pencil.and.scribble", tint: Theme.accent, title: L("Screenshot & annotate"),
                             shortcut: settings.captureAnnotateHotKey.display) { run(delay: true) { Screenshots.captureAndAnnotate() } }
-                QuickAction(symbol: "link", tint: Theme.cyan, title: L("Screenshot and copy link"),
+                QuickAction(symbol: "link", tint: Theme.cyan, title: L("Screenshot & copy link"),
                             shortcut: settings.captureUploadHotKey.display) { run(delay: true) { Screenshots.captureAndUpload() } }
-                QuickAction(symbol: "doc.on.doc.fill", tint: Theme.violet, title: L("Screenshot and copy image"),
-                            shortcut: nil) { run(delay: true) { Screenshots.captureAndCopy() } }
+                QuickAction(symbol: "doc.on.doc.fill", tint: Theme.violet, title: L("Screenshot & copy image"),
+                            shortcut: settings.captureCopyHotKey.display) { run(delay: true) { Screenshots.captureAndCopy() } }
             }
 
             section("02", L("Record")) {
@@ -109,7 +109,7 @@ struct StatusPopoverView: View {
                 .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(Capsule().fill(Theme.accent.opacity(0.18)))
             }
-            IconButton(symbol: "gearshape.fill", size: 30, help: L("Settings")) { run { AppController.shared.showSettings() } }
+            GearMenu(run: { run($0) })
         }
     }
 
@@ -146,8 +146,6 @@ struct StatusPopoverView: View {
                 FteWordmark()
             }
             .help(L("About Record Everything"))
-            Spacer()
-            Button(L("Quit")) { NSApp.terminate(nil) }
         }
         .buttonStyle(.plain)
         .font(.system(size: 12))
@@ -202,6 +200,35 @@ private struct KeyCaps: View {
     }
 }
 
+/// Gear in the header: settings, about and – deliberately tucked away – quit.
+private struct GearMenu: View {
+    let run: (@escaping () -> Void) -> Void
+    @State private var hover = false
+
+    var body: some View {
+        Menu {
+            Button(L("Settings…")) { run { AppController.shared.showSettings() } }
+            Button(L("About Record Everything")) { run { Brand.showAbout() } }
+            Divider()
+            Button(L("Quit Record Everything")) { NSApp.terminate(nil) }
+        } label: {
+            Image(systemName: "gearshape.fill")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(Color.white.opacity(hover ? 0.12 : 0)))
+                .contentShape(Circle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(L("Settings"))
+        .accessibilityLabel(L("Settings"))
+        .onHover { hover = $0 }
+    }
+}
+
 /// Shared look of the tiles: soft gradient, thin border; on hover a colored border, a glow and the
 /// hard offset shadow of the fte.one website.
 private struct TileBackground: ViewModifier {
@@ -233,7 +260,7 @@ private struct QuickAction: View {
     let symbol: String
     let tint: Color
     let title: String
-    let shortcut: String?
+    let shortcut: String
     let action: () -> Void
     @State private var hover = false
 
@@ -257,12 +284,7 @@ private struct QuickAction: View {
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
-                if let shortcut {
-                    KeyCaps(display: shortcut)
-                } else {
-                    Text(L("one click")).font(.system(size: 10, weight: .medium)).foregroundStyle(Theme.secondary)
-                        .frame(minHeight: 16)
-                }
+                KeyCaps(display: shortcut)
             }
             .padding(.vertical, 12)
             .padding(.horizontal, 6)

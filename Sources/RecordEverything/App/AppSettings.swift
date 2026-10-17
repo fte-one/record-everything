@@ -26,6 +26,9 @@ final class AppSettings: ObservableObject {
     @Published var captureAnnotateHotKey: HotKeyCombo {
         didSet { store(captureAnnotateHotKey, "captureAnnotateHotKey"); HotKeyCenter.shared.reload() }
     }
+    @Published var captureCopyHotKey: HotKeyCombo {
+        didSet { store(captureCopyHotKey, "captureCopyHotKey"); HotKeyCenter.shared.reload() }
+    }
     @Published var upload: UploadSettings {
         didSet { store(upload, "upload") }
     }
@@ -51,6 +54,7 @@ final class AppSettings: ObservableObject {
         stopHotKey = Self.load("stopHotKey") ?? .defaultStop
         captureUploadHotKey = Self.load("captureUploadHotKey") ?? .defaultCaptureUpload
         captureAnnotateHotKey = Self.load("captureAnnotateHotKey") ?? .defaultCaptureAnnotate
+        captureCopyHotKey = Self.load("captureCopyHotKey") ?? .defaultCaptureCopy
         upload = Self.load("upload") ?? UploadSettings()
         showDockIcon = defaults.object(forKey: "showDockIcon") as? Bool ?? false
         capture = Self.load("capture") ?? CaptureOptions()

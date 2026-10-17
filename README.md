@@ -10,16 +10,16 @@ Mikrofon mitschneiden, Aufnahmen in einer Bibliothek verwalten, abspielen und sc
 
 ## Funktionen
 
-- **Screenshot und markieren** (⌘←): Bereich aufziehen oder Fenster anklicken, dann Editor mit Pfeil,
+- **Screenshot & markieren** (⌘→): Bereich aufziehen oder Fenster anklicken, dann Editor mit Pfeil,
   Rechteck, Ellipse, Marker, Stift, Text, Verpixeln und Zuschneiden; danach „Hochladen“ (Link in die
   Zwischenablage) oder „Kopieren“ (Bild in die Zwischenablage).
-- **Screenshot und Link kopieren** (⌘→): Das Bild landet auf Cloudflare R2, der Link ist sofort in der
+- **Screenshot & Link kopieren** (⌘↑): Das Bild landet auf Cloudflare R2, der Link ist sofort in der
   Zwischenablage.
-- **Screenshot und Bild kopieren**: ein Klick, das Bild liegt in der Zwischenablage.
+- **Screenshot & Bild kopieren** (⌘↓): Das Bild liegt sofort in der Zwischenablage.
 - **Menüleiste als Zentrale**: Das Menü bündelt die drei Screenshot-Aktionen, Bildschirm-, Kamera-
   und Audioaufnahme sowie umschaltbar die letzten **Uploads** (Link kopieren, im Browser öffnen) und die
-  **Aufnahmen** (öffnen, schneiden, hochladen, im Finder zeigen, AirDrop, löschen). Wahlweise ohne
-  Dock-Symbol.
+  **Aufnahmen** (öffnen, schneiden, hochladen, im Finder zeigen, AirDrop, löschen). Einstellungen,
+  Info und Beenden stecken im Zahnrad-Menü. Wahlweise ohne Dock-Symbol.
 
 - **Bildschirm**: Vollbild-Overlay mit Fenstererkennung, frei aufziehbarem Bereich, Griffen, Lupe mit
   Koordinaten und Seitenverhältnissen (3:4, 4:3, 9:16, 16:9, ganzer Bildschirm, frei). Leiste mit

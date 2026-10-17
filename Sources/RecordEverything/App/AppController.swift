@@ -170,6 +170,8 @@ final class AppController: NSObject {
             Screenshots.captureAndUpload()
         case .captureAnnotate:
             Screenshots.captureAndAnnotate()
+        case .captureCopy:
+            Screenshots.captureAndCopy()
         }
     }
 

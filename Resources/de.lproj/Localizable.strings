@@ -142,7 +142,6 @@
 "Pixelate" = "Verpixeln";
 "Play a sound" = "Ton abspielen";
 "Public URL:" = "Öffentliche URL:";
-"Quit" = "Beenden";
 "Recent uploads" = "Letzte Uploads";
 "Record Everything is in the menu bar" = "Record Everything ist in der Menüleiste";
 "Record screen" = "Bildschirm aufnehmen";
@@ -181,15 +180,15 @@
 "Screenshot" = "Bildschirmfoto";
 "Uploads" = "Uploads";
 "in the menu under Recordings" = "im Menü unter Aufnahmen";
-"one click" = "ein Klick";
 
 /* fte.one (1.1) */
 "Crafted by humans & agents" = "Gemacht von Menschen & Agenten";
 "Imprint" = "Impressum";
-"Screenshot and copy link" = "Screenshot und Link kopieren";
-"Screenshot and copy image" = "Screenshot und Bild kopieren";
-"Screenshot and copy link:" = "Screenshot und Link kopieren:";
 "History" = "Verlauf";
-"Screenshot and annotate" = "Screenshot und markieren";
-"Screenshot and annotate:" = "Screenshot und markieren:";
 "Screenshots" = "Screenshots";
+"Screenshot & annotate" = "Screenshot & markieren";
+"Screenshot & copy link" = "Screenshot & Link kopieren";
+"Screenshot & copy image" = "Screenshot & Bild kopieren";
+"Screenshot & annotate:" = "Screenshot & markieren:";
+"Screenshot & copy link:" = "Screenshot & Link kopieren:";
+"Screenshot & copy image:" = "Screenshot & Bild kopieren:";

@@ -239,12 +239,16 @@ private struct ShortcutSettings: View {
         VStack(alignment: .leading, spacing: 14) {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 14) {
                 GridRow {
-                    settingsLabel(L("Screenshot and copy link:"))
+                    settingsLabel(L("Screenshot & annotate:"))
+                    HotKeyField(combo: $settings.captureAnnotateHotKey)
+                }
+                GridRow {
+                    settingsLabel(L("Screenshot & copy link:"))
                     HotKeyField(combo: $settings.captureUploadHotKey)
                 }
                 GridRow {
-                    settingsLabel(L("Screenshot and annotate:"))
-                    HotKeyField(combo: $settings.captureAnnotateHotKey)
+                    settingsLabel(L("Screenshot & copy image:"))
+                    HotKeyField(combo: $settings.captureCopyHotKey)
                 }
                 GridRow {
                     settingsLabel(L("Start/Pause Recording:"))

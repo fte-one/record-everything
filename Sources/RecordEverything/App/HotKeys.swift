@@ -9,9 +9,10 @@ struct HotKeyCombo: Codable, Equatable {
 
     static let defaultStartPause = HotKeyCombo(keyCode: UInt32(kVK_ANSI_1), modifiers: NSEvent.ModifierFlags.command.rawValue, keyLabel: "1")
     static let defaultStop = HotKeyCombo(keyCode: UInt32(kVK_ANSI_2), modifiers: NSEvent.ModifierFlags.command.rawValue, keyLabel: "2")
-    /// Same keys as the user's Dropshare setup: ⌘→ capture and upload, ⌘← capture and annotate.
-    static let defaultCaptureUpload = HotKeyCombo(keyCode: UInt32(kVK_RightArrow), modifiers: NSEvent.ModifierFlags.command.rawValue, keyLabel: "→")
-    static let defaultCaptureAnnotate = HotKeyCombo(keyCode: UInt32(kVK_LeftArrow), modifiers: NSEvent.ModifierFlags.command.rawValue, keyLabel: "←")
+    /// Screenshots: ⌘→ annotate, ⌘↑ upload and copy the link, ⌘↓ copy the image.
+    static let defaultCaptureAnnotate = HotKeyCombo(keyCode: UInt32(kVK_RightArrow), modifiers: NSEvent.ModifierFlags.command.rawValue, keyLabel: "→")
+    static let defaultCaptureUpload = HotKeyCombo(keyCode: UInt32(kVK_UpArrow), modifiers: NSEvent.ModifierFlags.command.rawValue, keyLabel: "↑")
+    static let defaultCaptureCopy = HotKeyCombo(keyCode: UInt32(kVK_DownArrow), modifiers: NSEvent.ModifierFlags.command.rawValue, keyLabel: "↓")
 
     var flags: NSEvent.ModifierFlags { NSEvent.ModifierFlags(rawValue: modifiers) }
 
@@ -63,7 +64,7 @@ struct HotKeyCombo: Codable, Equatable {
 final class HotKeyCenter {
     static let shared = HotKeyCenter()
 
-    enum Action: UInt32 { case startPause = 1, stop = 2, captureUpload = 3, captureAnnotate = 4 }
+    enum Action: UInt32 { case startPause = 1, stop = 2, captureUpload = 3, captureAnnotate = 4, captureCopy = 5 }
 
     var handler: ((Action) -> Void)?
     private var refs: [EventHotKeyRef] = []
@@ -78,6 +79,7 @@ final class HotKeyCenter {
         register(settings.stopHotKey, action: .stop)
         register(settings.captureUploadHotKey, action: .captureUpload)
         register(settings.captureAnnotateHotKey, action: .captureAnnotate)
+        register(settings.captureCopyHotKey, action: .captureCopy)
     }
 
     private func register(_ combo: HotKeyCombo, action: Action) {
