@@ -166,7 +166,18 @@ enum SelfTest {
             result["images"] = files
             result["ok"] = !files.isEmpty
         case "settings":
-            AppController.shared.showSettings(tab: .upload)
+            // -RecordEverythingSelfTestTab general|upload|shortcuts; the window is captured next to the JSON.
+            let tab = SettingsTab(rawValue: UserDefaults.standard.string(forKey: "RecordEverythingSelfTestTab") ?? "") ?? .upload
+            AppController.shared.showSettings(tab: tab)
+            try? await Task.sleep(for: .seconds(1.5))
+            if let window = NSApp.windows.first(where: { $0.isVisible && $0.title == L("Settings") }),
+               let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
+               let scWindow = content.windows.first(where: { Int($0.windowID) == window.windowNumber }),
+               let cg = try? await Screenshots.captureWindow(scWindow), let png = Screenshots.pngData(cg) {
+                let out = (UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "x") + ".png"
+                try? png.write(to: URL(fileURLWithPath: out))
+                result["image"] = out
+            }
             result["ok"] = true
         case "voicemix":
             // Runs the final audio rendering on a copy of -RecordEverythingSelfTestInput; the audio tracks are

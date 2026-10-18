@@ -172,6 +172,10 @@ final class AppController: NSObject {
             Screenshots.captureAndAnnotate()
         case .captureCopy:
             Screenshots.captureAndCopy()
+        case .recordCamera:
+            showCameraWindow()
+        case .recordAudio:
+            showAudioWindow()
         }
     }
 

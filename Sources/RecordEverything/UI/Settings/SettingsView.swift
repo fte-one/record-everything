@@ -237,7 +237,8 @@ private struct ShortcutSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 14) {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+                groupTitle(L("Screenshots"))
                 GridRow {
                     settingsLabel(L("Screenshot & annotate:"))
                     HotKeyField(combo: $settings.captureAnnotateHotKey)
@@ -250,24 +251,44 @@ private struct ShortcutSettings: View {
                     settingsLabel(L("Screenshot & copy image:"))
                     HotKeyField(combo: $settings.captureCopyHotKey)
                 }
+                groupTitle(L("Record")).padding(.top, 8)
                 GridRow {
-                    settingsLabel(L("Start/Pause Recording:"))
+                    settingsLabel(L("Screen – start/pause:"))
                     HotKeyField(combo: $settings.startPauseHotKey)
                 }
                 GridRow {
                     settingsLabel(L("Stop Recording:"))
                     HotKeyField(combo: $settings.stopHotKey)
                 }
+                GridRow {
+                    settingsLabel(L("Record camera:"))
+                    HotKeyField(combo: $settings.recordCameraHotKey)
+                }
+                GridRow {
+                    settingsLabel(L("Record audio:"))
+                    HotKeyField(combo: $settings.recordAudioHotKey)
+                }
             }
             Text(L("A shortcut works in one app at a time. Quit Dropshare if it uses the same keys."))
                 .font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func groupTitle(_ title: String) -> some View {
+        GridRow {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.2)
+                .foregroundStyle(Theme.secondary)
+                .gridCellColumns(2)
         }
     }
 }
 
-/// Click, then press the new shortcut. Esc cancels.
+/// Click, then press the new shortcut. Esc cancels, × removes the shortcut.
 private struct HotKeyField: View {
-    @Binding var combo: HotKeyCombo
+    @Binding var combo: HotKeyCombo?
     @State private var listening = false
     @State private var monitor: Any?
 
@@ -275,13 +296,26 @@ private struct HotKeyField: View {
         Button {
             listening ? stop() : start()
         } label: {
-            Text(listening ? L("Press keys…") : combo.display)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 8).padding(.vertical, 5)
-                .background(RoundedRectangle(cornerRadius: 6).fill(listening ? Theme.accent.opacity(0.35) : Theme.tile))
-                .contentShape(Rectangle())
+            HStack {
+                Text(listening ? L("Press keys…") : combo?.display ?? L("Not set"))
+                    .foregroundStyle(combo == nil && !listening ? Theme.secondary : .primary)
+                Spacer()
+            }
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 6).fill(listening ? Theme.accent.opacity(0.35) : Theme.tile))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .overlay(alignment: .trailing) {
+            if combo != nil && !listening {
+                Button { combo = nil } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.secondary)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 7)
+                .help(L("Remove shortcut"))
+            }
+        }
         .onDisappear { stop() }
     }
 

@@ -90,7 +90,6 @@
 "Start / Pause:" = "Start / Pause:";
 "Start Recording" = "Aufnahme starten";
 "Start at login" = "Beim Anmelden starten";
-"Start/Pause Recording:" = "Aufnahme starten/pausieren:";
 "Starting camera…" = "Kamera wird gestartet …";
 "Startup:" = "Start:";
 "Stop Recording" = "Aufnahme beenden";
@@ -192,3 +191,8 @@
 "Screenshot & annotate:" = "Screenshot & markieren:";
 "Screenshot & copy link:" = "Screenshot & Link kopieren:";
 "Screenshot & copy image:" = "Screenshot & Bild kopieren:";
+"Not set" = "Nicht festgelegt";
+"Remove shortcut" = "Kürzel entfernen";
+"Screen – start/pause:" = "Bildschirm starten/pausieren:";
+"Record camera:" = "Kamera aufnehmen:";
+"Record audio:" = "Audio aufnehmen:";

@@ -14,19 +14,27 @@ final class AppSettings: ObservableObject {
     @Published var saveFolder: URL {
         didSet { defaults.set(saveFolder.path, forKey: "saveFolder") }
     }
-    @Published var startPauseHotKey: HotKeyCombo {
+    /// Global shortcuts; nil means none. Recording shortcuts are unset by default because ⌘1/⌘2 and the
+    /// like belong to other apps (tab switching in browsers).
+    @Published var startPauseHotKey: HotKeyCombo? {
         didSet { store(startPauseHotKey, "startPauseHotKey"); HotKeyCenter.shared.reload() }
     }
-    @Published var stopHotKey: HotKeyCombo {
+    @Published var stopHotKey: HotKeyCombo? {
         didSet { store(stopHotKey, "stopHotKey"); HotKeyCenter.shared.reload() }
     }
-    @Published var captureUploadHotKey: HotKeyCombo {
+    @Published var recordCameraHotKey: HotKeyCombo? {
+        didSet { store(recordCameraHotKey, "recordCameraHotKey"); HotKeyCenter.shared.reload() }
+    }
+    @Published var recordAudioHotKey: HotKeyCombo? {
+        didSet { store(recordAudioHotKey, "recordAudioHotKey"); HotKeyCenter.shared.reload() }
+    }
+    @Published var captureUploadHotKey: HotKeyCombo? {
         didSet { store(captureUploadHotKey, "captureUploadHotKey"); HotKeyCenter.shared.reload() }
     }
-    @Published var captureAnnotateHotKey: HotKeyCombo {
+    @Published var captureAnnotateHotKey: HotKeyCombo? {
         didSet { store(captureAnnotateHotKey, "captureAnnotateHotKey"); HotKeyCenter.shared.reload() }
     }
-    @Published var captureCopyHotKey: HotKeyCombo {
+    @Published var captureCopyHotKey: HotKeyCombo? {
         didSet { store(captureCopyHotKey, "captureCopyHotKey"); HotKeyCenter.shared.reload() }
     }
     @Published var upload: UploadSettings {
@@ -50,11 +58,13 @@ final class AppSettings: ObservableObject {
         let movies = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Record Everything", isDirectory: true)
         saveFolder = defaults.string(forKey: "saveFolder").map { URL(fileURLWithPath: $0, isDirectory: true) } ?? movies
-        startPauseHotKey = Self.load("startPauseHotKey") ?? .defaultStartPause
-        stopHotKey = Self.load("stopHotKey") ?? .defaultStop
-        captureUploadHotKey = Self.load("captureUploadHotKey") ?? .defaultCaptureUpload
-        captureAnnotateHotKey = Self.load("captureAnnotateHotKey") ?? .defaultCaptureAnnotate
-        captureCopyHotKey = Self.load("captureCopyHotKey") ?? .defaultCaptureCopy
+        startPauseHotKey = Self.loadHotKey("startPauseHotKey", default: nil)
+        stopHotKey = Self.loadHotKey("stopHotKey", default: nil)
+        recordCameraHotKey = Self.loadHotKey("recordCameraHotKey", default: nil)
+        recordAudioHotKey = Self.loadHotKey("recordAudioHotKey", default: nil)
+        captureUploadHotKey = Self.loadHotKey("captureUploadHotKey", default: .defaultCaptureUpload)
+        captureAnnotateHotKey = Self.loadHotKey("captureAnnotateHotKey", default: .defaultCaptureAnnotate)
+        captureCopyHotKey = Self.loadHotKey("captureCopyHotKey", default: .defaultCaptureCopy)
         upload = Self.load("upload") ?? UploadSettings()
         showDockIcon = defaults.object(forKey: "showDockIcon") as? Bool ?? false
         capture = Self.load("capture") ?? CaptureOptions()
@@ -91,6 +101,12 @@ final class AppSettings: ObservableObject {
 
     private func store<T: Encodable>(_ value: T, _ key: String) {
         defaults.set(try? JSONEncoder().encode(value), forKey: key)
+    }
+
+    /// A stored shortcut, a stored "none" (JSON null) or, if nothing was ever stored, the default.
+    private static func loadHotKey(_ key: String, default value: HotKeyCombo?) -> HotKeyCombo? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return value }
+        do { return try JSONDecoder().decode(HotKeyCombo?.self, from: data) } catch { return value }
     }
 
     private static func load<T: Decodable>(_ key: String) -> T? {

@@ -84,8 +84,8 @@ private struct CountdownView: View {
                 .contentTransition(.numericText(countsDown: true))
                 .animation(.easeOut(duration: 0.25), value: model.value)
             VStack(alignment: .leading, spacing: 4) {
-                hint(L("Start / Pause:"), settings.startPauseHotKey.display)
-                hint(L("Stop:"), settings.stopHotKey.display)
+                if let key = settings.startPauseHotKey { hint(L("Start / Pause:"), key.display) }
+                if let key = settings.stopHotKey { hint(L("Stop:"), key.display) }
                 hint(L("Cancel:"), "esc")
             }
             .font(.system(size: 11))

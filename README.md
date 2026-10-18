@@ -38,8 +38,9 @@ Mikrofon mitschneiden, Aufnahmen in einer Bibliothek verwalten, abspielen und sc
 - **Info-Fenster** mit Player und Metadaten, Umbenennen (auch der Datei).
 - **Editor**: Zeitleiste mit Vorschaubildern, Auswahl mit Griffen, „Nur Auswahl behalten“,
   „Auswahl entfernen“, Widerrufen, Ton aus; Sichern oder Sichern unter.
-- **Globale Hotkeys** (Standard ⌘1 Start/Pause, ⌘2 Stopp), in den Einstellungen änderbar;
-  Speicherort, Start bei Anmeldung.
+- **Globale Hotkeys**: Screenshots standardmäßig ⌘→ / ⌘↑ / ⌘↓; Bildschirm (Start/Pause, Stopp),
+  Kamera und Audio frei belegbar, ab Werk ohne Kürzel. Jedes Kürzel lässt sich in den Einstellungen
+  ändern oder entfernen. Dazu Speicherort, Start bei Anmeldung.
 - **Online-Updates** über Sparkle und GitHub Releases (täglich automatisch oder über
   „Nach Updates suchen …“).
 - Oberfläche auf Deutsch und Englisch.

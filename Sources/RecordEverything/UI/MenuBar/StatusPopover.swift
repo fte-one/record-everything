@@ -20,20 +20,22 @@ struct StatusPopoverView: View {
 
             section("01", L("Screenshots")) {
                 QuickAction(symbol: "pencil.and.scribble", tint: Theme.accent, title: L("Screenshot & annotate"),
-                            shortcut: settings.captureAnnotateHotKey.display) { run(delay: true) { Screenshots.captureAndAnnotate() } }
+                            shortcut: settings.captureAnnotateHotKey?.display) { run(delay: true) { Screenshots.captureAndAnnotate() } }
                 QuickAction(symbol: "link", tint: Theme.cyan, title: L("Screenshot & copy link"),
-                            shortcut: settings.captureUploadHotKey.display) { run(delay: true) { Screenshots.captureAndUpload() } }
+                            shortcut: settings.captureUploadHotKey?.display) { run(delay: true) { Screenshots.captureAndUpload() } }
                 QuickAction(symbol: "doc.on.doc.fill", tint: Theme.violet, title: L("Screenshot & copy image"),
-                            shortcut: settings.captureCopyHotKey.display) { run(delay: true) { Screenshots.captureAndCopy() } }
+                            shortcut: settings.captureCopyHotKey?.display) { run(delay: true) { Screenshots.captureAndCopy() } }
             }
 
             section("02", L("Record")) {
                 RecordTile(symbol: "rectangle.dashed.badge.record", tint: Theme.record, title: L("Screen"),
-                           shortcut: settings.startPauseHotKey.display) { run(delay: true) { AppController.shared.startScreenFlow() } }
-                RecordTile(symbol: "web.camera.fill", tint: Theme.cyan, title: L("Camera"), shortcut: nil) {
+                           shortcut: settings.startPauseHotKey?.display) { run(delay: true) { AppController.shared.startScreenFlow() } }
+                RecordTile(symbol: "web.camera.fill", tint: Theme.cyan, title: L("Camera"), shortcut: settings.recordCameraHotKey?.display) {
                     run { AppController.shared.showCameraWindow() }
                 }
-                RecordTile(symbol: "mic.fill", tint: .orange, title: L("Audio"), shortcut: nil) { run { AppController.shared.showAudioWindow() } }
+                RecordTile(symbol: "mic.fill", tint: .orange, title: L("Audio"), shortcut: settings.recordAudioHotKey?.display) {
+                    run { AppController.shared.showAudioWindow() }
+                }
             }
             .disabled(recorder.isActive)
             .opacity(recorder.isActive ? 0.45 : 1)
@@ -261,7 +263,7 @@ private struct QuickAction: View {
     let symbol: String
     let tint: Color
     let title: String
-    let shortcut: String
+    let shortcut: String?
     let action: () -> Void
     @State private var hover = false
 
@@ -285,7 +287,7 @@ private struct QuickAction: View {
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
-                KeyCaps(display: shortcut)
+                if let shortcut { KeyCaps(display: shortcut) }
             }
             .padding(.vertical, 12)
             .padding(.horizontal, 6)

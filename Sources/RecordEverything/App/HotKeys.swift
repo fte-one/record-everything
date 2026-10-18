@@ -7,8 +7,6 @@ struct HotKeyCombo: Codable, Equatable {
     var modifiers: UInt
     var keyLabel: String
 
-    static let defaultStartPause = HotKeyCombo(keyCode: UInt32(kVK_ANSI_1), modifiers: NSEvent.ModifierFlags.command.rawValue, keyLabel: "1")
-    static let defaultStop = HotKeyCombo(keyCode: UInt32(kVK_ANSI_2), modifiers: NSEvent.ModifierFlags.command.rawValue, keyLabel: "2")
     /// Screenshots: ⌘→ annotate, ⌘↑ upload and copy the link, ⌘↓ copy the image.
     static let defaultCaptureAnnotate = HotKeyCombo(keyCode: UInt32(kVK_RightArrow), modifiers: NSEvent.ModifierFlags.command.rawValue, keyLabel: "→")
     static let defaultCaptureUpload = HotKeyCombo(keyCode: UInt32(kVK_UpArrow), modifiers: NSEvent.ModifierFlags.command.rawValue, keyLabel: "↑")
@@ -64,7 +62,7 @@ struct HotKeyCombo: Codable, Equatable {
 final class HotKeyCenter {
     static let shared = HotKeyCenter()
 
-    enum Action: UInt32 { case startPause = 1, stop = 2, captureUpload = 3, captureAnnotate = 4, captureCopy = 5 }
+    enum Action: UInt32 { case startPause = 1, stop = 2, captureUpload = 3, captureAnnotate = 4, captureCopy = 5, recordCamera = 6, recordAudio = 7 }
 
     var handler: ((Action) -> Void)?
     private var refs: [EventHotKeyRef] = []
@@ -80,9 +78,12 @@ final class HotKeyCenter {
         register(settings.captureUploadHotKey, action: .captureUpload)
         register(settings.captureAnnotateHotKey, action: .captureAnnotate)
         register(settings.captureCopyHotKey, action: .captureCopy)
+        register(settings.recordCameraHotKey, action: .recordCamera)
+        register(settings.recordAudioHotKey, action: .recordAudio)
     }
 
-    private func register(_ combo: HotKeyCombo, action: Action) {
+    private func register(_ combo: HotKeyCombo?, action: Action) {
+        guard let combo else { return }
         var ref: EventHotKeyRef?
         let id = EventHotKeyID(signature: OSType(0x52455645), id: action.rawValue) // "REVE"
         let status = RegisterEventHotKey(combo.keyCode, combo.carbonModifiers, id, GetApplicationEventTarget(), 0, &ref)
