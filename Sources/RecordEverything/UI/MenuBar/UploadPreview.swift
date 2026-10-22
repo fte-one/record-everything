@@ -22,6 +22,8 @@ final class UploadPreview {
         current = record.id
         let thumbnail = record.thumbnailPath.flatMap { NSImage(contentsOfFile: $0) }
         let aspect = thumbnail.map { $0.size.width / max($0.size.height, 1) } ?? 16 / 10
+        // Other files only have their small thumbnail, so their preview stays small and sharp.
+        let maxSide: CGFloat = Self.imageTypes.contains(record.url.pathExtension.lowercased()) ? 640 : 320
 
         // Left of the menu; to the right if the menu sits at the left edge of the screen.
         let visible = screen.visibleFrame
@@ -29,9 +31,9 @@ final class UploadPreview {
         let spaceLeft = menu.frame.minX - visible.minX - gap - 8
         let spaceRight = visible.maxX - menu.frame.maxX - gap - 8
         let onLeft = spaceLeft >= 240 || spaceLeft >= spaceRight
-        var width = min(640, onLeft ? spaceLeft : spaceRight)
+        var width = min(maxSide, onLeft ? spaceLeft : spaceRight)
         var height = width / aspect
-        let maxHeight = min(480, visible.height - 16)
+        let maxHeight = min(maxSide * 0.75, visible.height - 16)
         if height > maxHeight {
             height = maxHeight
             width = height * aspect
@@ -119,7 +121,7 @@ private struct UploadPreviewView: View {
     }
 
     private var caption: String {
-        guard let rep = image?.representations.first, rep.pixelsWide > 0 else { return record.fileName }
-        return "\(record.fileName) · \(rep.pixelsWide) × \(rep.pixelsHigh)"
+        guard let rep = image?.representations.first, rep.pixelsWide > 0 else { return record.displayName }
+        return "\(record.displayName) · \(rep.pixelsWide) × \(rep.pixelsHigh)"
     }
 }

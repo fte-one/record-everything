@@ -8,20 +8,37 @@ final class Toast {
 
     enum Style { case success, error, progress, info }
 
+    /// A button on the notice, e.g. to cancel an upload.
+    struct Action {
+        let title: String
+        let handler: () -> Void
+    }
+
     private var panel: NSPanel?
     private let model = ToastModel()
     private var hideWork: DispatchWorkItem?
+    /// Counts the notices shown, so a fade-out that ends after a newer notice appeared leaves that one up.
+    private var shownCount = 0
 
-    func show(_ text: String, detail: String? = nil, symbol: String, style: Style, duration: TimeInterval?) {
+    /// Window and screen frame of the visible notice (self test screenshots).
+    var windowNumber: Int? { panel?.isVisible == true ? panel?.windowNumber : nil }
+    var frame: CGRect? { panel?.isVisible == true ? panel?.frame : nil }
+
+    /// `anchor` (a screen rect such as the menu bar icon) puts the notice right below it instead of at the top center.
+    func show(_ text: String, detail: String? = nil, symbol: String, style: Style, duration: TimeInterval?,
+              anchor: CGRect? = nil, action: Action? = nil) {
         model.text = text
         model.detail = detail
         model.symbol = symbol
         model.style = style
         model.progress = nil
+        model.action = action
+        shownCount += 1
         let panel = self.panel ?? makePanel()
         self.panel = panel
-        position(panel)
-        panel.alphaValue = 1
+        position(panel, anchor: anchor)
+        // Through the animator, so it also replaces a fade-out still running.
+        NSAnimationContext.runAnimationGroup { $0.duration = 0; panel.animator().alphaValue = 1 }
         panel.orderFrontRegardless()
         hideWork?.cancel()
         if let duration {
@@ -38,8 +55,11 @@ final class Toast {
 
     func hide() {
         guard let panel else { return }
+        let count = shownCount
         NSAnimationContext.runAnimationGroup({ $0.duration = 0.25; panel.animator().alphaValue = 0 },
-                                             completionHandler: { MainActor.assumeIsolated { panel.orderOut(nil) } })
+                                             completionHandler: { MainActor.assumeIsolated { [weak self] in
+                                                 if self?.shownCount == count { panel.orderOut(nil) }
+                                             } })
     }
 
     private func makePanel() -> NSPanel {
@@ -56,11 +76,14 @@ final class Toast {
         return panel
     }
 
-    private func position(_ panel: NSPanel) {
-        let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main!
+    private func position(_ panel: NSPanel, anchor: CGRect?) {
+        let point = anchor.map { CGPoint(x: $0.midX, y: $0.midY) } ?? NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { NSMouseInRect(point, $0.frame, false) } ?? NSScreen.main!
+        let visible = screen.visibleFrame
         let size = panel.contentView?.fittingSize ?? NSSize(width: 340, height: 64)
-        let frame = NSRect(x: screen.visibleFrame.midX - size.width / 2, y: screen.visibleFrame.maxY - size.height - 12,
-                           width: size.width, height: size.height)
+        var x = (anchor?.midX ?? visible.midX) - size.width / 2
+        x = min(max(x, visible.minX + 8), visible.maxX - size.width - 8)
+        let frame = NSRect(x: x, y: visible.maxY - size.height - (anchor == nil ? 12 : 6), width: size.width, height: size.height)
         panel.setFrame(frame, display: true)
     }
 }
@@ -71,6 +94,7 @@ final class ToastModel: ObservableObject {
     @Published var symbol = "checkmark.circle.fill"
     @Published var style: Toast.Style = .info
     @Published var progress: Double?
+    @Published var action: Toast.Action?
 }
 
 private struct ToastView: View {
@@ -102,6 +126,16 @@ private struct ToastView: View {
                 }
             }
             Spacer(minLength: 0)
+            if let action = model.action {
+                Button(action: action.handler) {
+                    Text(action.title)
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(Capsule().fill(Color.white.opacity(0.12)))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

@@ -196,3 +196,26 @@
 "Screen – start/pause:" = "Bildschirm starten/pausieren:";
 "Record camera:" = "Kamera aufnehmen:";
 "Record audio:" = "Audio aufnehmen:";
+
+/* Sharing any file */
+"%@ is larger than 5 GB." = "%@ ist größer als 5 GB.";
+"%d failed" = "%d fehlgeschlagen";
+"%d files" = "%d Dateien";
+"%d links copied" = "%d Links kopiert";
+"Compressing folder…" = "Ordner wird gepackt …";
+"Drop here to upload" = "Hier ablegen zum Hochladen";
+"Could not compress the folder" = "Ordner konnte nicht gepackt werden";
+"One link per line" = "Ein Link pro Zeile";
+"Or drag files onto the menu bar icon" = "Oder Dateien auf das Menüleisten-Symbol ziehen";
+"Release to open the settings" = "Loslassen öffnet die Einstellungen";
+"Release to upload & copy the link" = "Loslassen: hochladen & Link kopieren";
+"Release to upload & copy the links" = "Loslassen: hochladen & Links kopieren";
+"The link lands on the clipboard" = "Der Link landet in der Zwischenablage";
+"The links land on the clipboard. Folders are uploaded as a ZIP archive." = "Die Links landen in der Zwischenablage. Ordner werden als ZIP-Archiv hochgeladen.";
+"Upload File…" = "Datei hochladen …";
+"Upload cancelled" = "Upload abgebrochen";
+"Upload file & copy link" = "Datei hochladen & Link kopieren";
+"Uploading %d of %d…" = "Wird hochgeladen … (%d von %d)";
+"Uploading is not set up yet" = "Der Upload ist noch nicht eingerichtet";
+"as ZIP archive" = "als ZIP-Archiv";
+"folders as ZIP" = "Ordner als ZIP";

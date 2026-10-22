@@ -10,6 +10,9 @@ final class AppController: NSObject {
 
     private var statusItem: NSStatusItem?
     private let menuPanel = MenuPanelController()
+    private let dropTarget = StatusItemDropTarget()
+    private var dropHover = false
+    private var uploading = false
     private var cancellables: Set<AnyCancellable> = []
     private let recorder = Recorder.shared
 
@@ -27,6 +30,12 @@ final class AppController: NSObject {
         }
         recorder.$state.combineLatest(recorder.$elapsed)
             .sink { [weak self] _, _ in self?.updateStatusItem() }
+            .store(in: &cancellables)
+        UploadManager.shared.$activeUploads
+            .sink { [weak self] count in
+                self?.uploading = count > 0
+                self?.updateStatusItem()
+            }
             .store(in: &cancellables)
 
         if SelfTest.mode != nil {
@@ -189,13 +198,28 @@ final class AppController: NSObject {
         item.button?.action = #selector(statusItemClicked)
         item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         statusItem = item
+        // Files dragged toward the icon open a drop zone below it; meanwhile the icon lights up and shows an arrow.
+        DropZone.shared.start(
+            anchor: { [weak self] in self?.statusItemFrame },
+            onVisible: { [weak self] visible in
+                guard let self, self.dropHover != visible else { return }
+                self.dropHover = visible
+                self.statusItem?.button?.highlight(visible)
+                self.updateStatusItem()
+            },
+            onDrop: { [weak self] urls in FileSharing.upload(urls, anchor: self?.statusItemFrame) })
     }
 
     /// Opens the menu with the quick actions, recent uploads and recordings (Dropshare's menu bar popup).
     @objc private func statusItemClicked() { togglePopover() }
 
-    /// Global frame of the menu bar icon (self test screenshots).
+    /// Global frame of the menu bar icon (notices of shared files sit below it; self test screenshots).
     var statusItemFrame: CGRect? { statusItem?.button?.window?.frame }
+
+    /// Shows the icon and drop zone as while these files are dragged onto it; nil ends it (self test screenshots).
+    func previewDrop(_ urls: [URL]?) {
+        if let urls { DropZone.shared.show(targetedBy: urls, sticky: true) } else { DropZone.shared.hide() }
+    }
 
     /// Shows the recording icons without recording (self test screenshots).
     func previewStatusIcon(_ image: NSImage, title: String) {
@@ -214,6 +238,7 @@ final class AppController: NSObject {
 
     private func updateStatusItem() {
         guard let button = statusItem?.button else { return }
+        dropTarget.attach(to: button)
         switch recorder.state {
         case .recording, .paused:
             let icon = recorder.state == .paused ? MenuBarIcon.paused : MenuBarIcon.recording
@@ -221,7 +246,8 @@ final class AppController: NSObject {
             button.title = " " + formatDuration(recorder.elapsed)
             button.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
         default:
-            if button.image !== MenuBarIcon.idle { button.image = MenuBarIcon.idle }
+            let icon = dropHover || uploading ? MenuBarIcon.upload : MenuBarIcon.idle
+            if button.image !== icon { button.image = icon }
             button.title = ""
         }
     }
@@ -229,6 +255,10 @@ final class AppController: NSObject {
     @objc func menuRecordScreen() { startScreenFlow() }
     @objc func menuRecordCamera() { showCameraWindow() }
     @objc func menuRecordAudio() { showAudioWindow() }
+    @objc func menuUploadFile() {
+        menuPanel.close()
+        FileSharing.choose()
+    }
     @objc func menuOpenMenu() { togglePopover() }
     @objc func menuAbout() { Brand.showAbout() }
     @objc func menuSettings() { showSettings() }

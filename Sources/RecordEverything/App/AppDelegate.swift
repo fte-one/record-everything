@@ -54,6 +54,8 @@ enum MainMenu {
         fileMenu.addItem(item(L("Record Webcam"), "", c, #selector(AppController.menuRecordCamera)))
         fileMenu.addItem(item(L("Record Audio"), "", c, #selector(AppController.menuRecordAudio)))
         fileMenu.addItem(.separator())
+        fileMenu.addItem(item(L("Upload File…"), "o", c, #selector(AppController.menuUploadFile)))
+        fileMenu.addItem(.separator())
         fileMenu.addItem(item(L("Open Menu"), "0", c, #selector(AppController.menuOpenMenu)))
         fileMenu.addItem(withTitle: L("Close Window"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         fileItem.submenu = fileMenu

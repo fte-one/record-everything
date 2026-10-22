@@ -15,7 +15,7 @@ enum SelfTest {
         let output = UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "recordeverything-selftest.json"
         Task {
             var result: [String: Any] = ["mode": mode]
-            if ["upload", "screenshot", "annotate", "popover", "settings", "menubaricon", "voicemix", "preview"].contains(mode) {
+            if ["upload", "files", "drop", "drophint", "screenshot", "annotate", "popover", "settings", "menubaricon", "voicemix", "preview"].contains(mode) {
                 await runExtra(mode, into: &result)
                 if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]) {
                     try? data.write(to: URL(fileURLWithPath: output))
@@ -139,8 +139,8 @@ enum SelfTest {
             try? await Task.sleep(for: .seconds(1.5))
             var files: [String] = []
             let base = UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "x"
-            for (name, image, title) in [("idle", MenuBarIcon.idle, ""), ("recording", MenuBarIcon.recording, " 00:01:23"),
-                                         ("paused", MenuBarIcon.paused, " 00:01:23")] {
+            for (name, image, title) in [("idle", MenuBarIcon.idle, ""), ("upload", MenuBarIcon.upload, ""),
+                                         ("recording", MenuBarIcon.recording, " 00:01:23"), ("paused", MenuBarIcon.paused, " 00:01:23")] {
                 AppController.shared.previewStatusIcon(image, title: title)
                 try? await Task.sleep(for: .milliseconds(600))
                 guard let frame = AppController.shared.statusItemFrame,
@@ -211,32 +211,137 @@ enum SelfTest {
                let menu = NSApp.windows.first(where: { $0 is MenuPanel && $0.isVisible }) {
                 UploadPreview.shared.show(record, anchorY: menu.frame.minY + menu.frame.height * 0.35)
                 try? await Task.sleep(for: .seconds(3))
-                // Both windows captured separately and placed on one picture as they sit on screen.
-                if let preview = UploadPreview.shared.frame, let previewNumber = UploadPreview.shared.windowNumber,
-                   let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) {
-                    let union = menu.frame.union(preview).insetBy(dx: -20, dy: -20)
-                    let scale = menu.backingScaleFactor
-                    if let ctx = CGContext(data: nil, width: Int(union.width * scale), height: Int(union.height * scale), bitsPerComponent: 8,
-                                           bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                           bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
-                        ctx.setFillColor(NSColor(white: 0.35, alpha: 1).cgColor)
-                        ctx.fill(CGRect(x: 0, y: 0, width: ctx.width, height: ctx.height))
-                        for (number, frame) in [(menu.windowNumber, menu.frame), (previewNumber, preview)] {
-                            guard let window = content.windows.first(where: { Int($0.windowID) == number }),
-                                  let cg = try? await Screenshots.captureWindow(window) else { continue }
-                            ctx.draw(cg, in: CGRect(x: (frame.minX - union.minX) * scale, y: (frame.minY - union.minY) * scale,
-                                                    width: frame.width * scale, height: frame.height * scale))
-                        }
-                        if let cg = ctx.makeImage(), let png = Screenshots.pngData(cg) {
-                            let out = (UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "x") + ".png"
-                            try? png.write(to: URL(fileURLWithPath: out))
-                            result["image"] = out
-                        }
-                    }
+                if let preview = UploadPreview.shared.frame, let previewNumber = UploadPreview.shared.windowNumber {
+                    result["image"] = await composite([(menu.windowNumber, menu.frame), (previewNumber, preview)])
                 }
                 result["record"] = record.fileName
             }
             result["ok"] = true
+        case "files":
+            // A text file with umlauts, a folder (goes up as ZIP) and a 3 MB file (progress), then the same file again,
+            // cancelled right away. Clipboard and upload history stay as they were.
+            let savedClipboard = NSPasteboard.general.string(forType: .string)
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("RecordEverythingFiles-\(UUID().uuidString.prefix(6))")
+            let folder = dir.appendingPathComponent("Ordner Test")
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let text = dir.appendingPathComponent("Grüße & Test.txt")
+            let big = dir.appendingPathComponent("Groß.bin")
+            try? Data("Hällo Wörld\n".utf8).write(to: text)
+            try? Data("eins".utf8).write(to: folder.appendingPathComponent("eins.txt"))
+            try? Data("zwei".utf8).write(to: folder.appendingPathComponent("zwei.txt"))
+            try? Data(count: 3_000_000).write(to: big)
+            let before = Set(UploadHistory.shared.records.map(\.id))
+            let anchor = AppController.shared.statusItemFrame
+            let links = await FileSharing.uploadNow([text, folder, big], anchor: anchor)
+            result["links"] = links.map(\.absoluteString)
+            result["clipboard"] = NSPasteboard.general.string(forType: .string) ?? ""
+            let added = UploadHistory.shared.records.filter { !before.contains($0.id) }
+            result["history"] = added.map(\.displayName)
+            result["thumbnails"] = added.map { $0.thumbnailPath != nil }
+            let cancelled = Task { await FileSharing.uploadNow([big], anchor: anchor) }
+            cancelled.cancel()
+            result["cancelledLinks"] = await cancelled.value.count
+            result["ok"] = links.count == 3
+            UploadHistory.shared.records.filter { !before.contains($0.id) }.forEach { UploadHistory.shared.remove($0) }
+            try? FileManager.default.removeItem(at: dir)
+            NSPasteboard.general.clearContents()
+            if let savedClipboard { NSPasteboard.general.setString(savedClipboard, forType: .string) }
+            try? await Task.sleep(for: .seconds(1))
+        case "drop":
+            // A file and a folder dropped twice: on the menu bar icon (delivered to the status item's window the way
+            // AppKit does it) and on the drop zone below it. Clipboard and upload history stay as they were.
+            try? await Task.sleep(for: .seconds(1.5))
+            let savedClipboard = NSPasteboard.general.string(forType: .string)
+            let before = Set(UploadHistory.shared.records.map(\.id))
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("RecordEverythingDrop-\(UUID().uuidString.prefix(6))")
+            let folder = dir.appendingPathComponent("Ordner Projekt")
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let file = dir.appendingPathComponent("Angebot Müller.pdf")
+            try? Data("%PDF-1.4\n".utf8).write(to: file)
+            try? Data("Notiz".utf8).write(to: folder.appendingPathComponent("notiz.txt"))
+            let pasteboard = NSPasteboard(name: NSPasteboard.Name("RecordEverythingSelfTestDrag"))
+            pasteboard.clearContents()
+            pasteboard.writeObjects([file as NSURL, folder as NSURL])
+            let drag = TestDrag(pasteboard: pasteboard)
+            guard let window = NSApp.windows.first(where: { $0.className.contains("StatusBarWindow") }),
+                  let icon = AppController.shared.statusItemFrame, let area = DropZone.shared.activationArea else {
+                result["ok"] = false
+                result["error"] = "no status item window"
+                break
+            }
+            result["areaBelowIcon"] = area.contains(CGPoint(x: icon.midX + 100, y: icon.minY - 120))
+            result["areaFarBelow"] = area.contains(CGPoint(x: icon.midX, y: icon.minY - 400))
+
+            // 1. Onto the icon: the zone opens in its release state, the icon lights up.
+            typealias Entered = @convention(c) (AnyObject, Selector, NSDraggingInfo) -> UInt
+            typealias Exited = @convention(c) (AnyObject, Selector, NSDraggingInfo?) -> Void
+            typealias Perform = @convention(c) (AnyObject, Selector, NSDraggingInfo) -> Bool
+            let enteredSel = #selector(NSDraggingDestination.draggingEntered(_:))
+            let exitedSel = #selector(NSDraggingDestination.draggingExited(_:))
+            let performSel = #selector(NSDraggingDestination.performDragOperation(_:))
+            let iconOperation = unsafeBitCast(window.method(for: enteredSel), to: Entered.self)(window, enteredSel, drag)
+            func button(in view: NSView?) -> NSButton? {
+                guard let view else { return nil }
+                return view as? NSButton ?? view.subviews.lazy.compactMap { button(in: $0) }.first
+            }
+            result["iconEntered"] = iconOperation == NSDragOperation.copy.rawValue
+            result["iconHover"] = button(in: window.contentView)?.image === MenuBarIcon.upload
+            result["zoneOpenedFromIcon"] = DropZone.shared.isShown && DropZone.shared.isTargeted
+            // Moving down off the icon keeps the zone open, no longer in its release state.
+            unsafeBitCast(window.method(for: exitedSel), to: Exited.self)(window, exitedSel, drag)
+            result["zoneStaysAfterIcon"] = DropZone.shared.isShown && !DropZone.shared.isTargeted
+
+            // 2. Onto the zone.
+            let host = DropZone.shared.window?.contentView as? DropZoneHost
+            result["zoneEntered"] = host?.draggingEntered(drag) == .copy && DropZone.shared.isTargeted
+            let zoneAccepted = host?.performDragOperation(drag) == true
+            result["zoneAccepted"] = zoneAccepted
+            result["zoneClosed"] = !DropZone.shared.isShown
+
+            // 3. Straight onto the icon again.
+            _ = unsafeBitCast(window.method(for: enteredSel), to: Entered.self)(window, enteredSel, drag)
+            let iconAccepted = unsafeBitCast(window.method(for: performSel), to: Perform.self)(window, performSel, drag)
+            result["iconAccepted"] = iconAccepted
+
+            // Both drops upload the file and the folder (as ZIP).
+            for _ in 0..<40 where UploadHistory.shared.records.filter({ !before.contains($0.id) }).count < 4 {
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+            let added = UploadHistory.shared.records.filter { !before.contains($0.id) }
+            result["history"] = added.map(\.displayName)
+            result["clipboard"] = NSPasteboard.general.string(forType: .string) ?? ""
+            result["ok"] = iconOperation == NSDragOperation.copy.rawValue && zoneAccepted && iconAccepted && added.count == 4
+            added.forEach { UploadHistory.shared.remove($0) }
+            try? FileManager.default.removeItem(at: dir)
+            pasteboard.releaseGlobally()
+            NSPasteboard.general.clearContents()
+            if let savedClipboard { NSPasteboard.general.setString(savedClipboard, forType: .string) }
+            try? await Task.sleep(for: .seconds(1))
+        case "drophint":
+            // The drop zone (waiting and in its release state) and the upload notice with progress and cancel button.
+            // Drawn by the windows themselves, so no screen recording permission is needed.
+            try? await Task.sleep(for: .seconds(1.5))
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent("Vertrag Müller.pdf")
+            try? Data(count: 2_400_000).write(to: file)
+            var images: [String] = []
+            AppController.shared.previewDrop([file])
+            DropZone.shared.untarget()
+            try? await Task.sleep(for: .seconds(0.4))
+            if let window = DropZone.shared.window, let image = render(window, suffix: "-zone") { images.append(image) }
+            DropZone.shared.target([file])
+            try? await Task.sleep(for: .seconds(0.4))
+            if let window = DropZone.shared.window, let image = render(window, suffix: "-zone-release") { images.append(image) }
+            AppController.shared.previewDrop(nil)
+            Toast.shared.show(L("Uploading…"), detail: file.lastPathComponent, symbol: "arrow.up.circle", style: .progress, duration: nil,
+                              anchor: AppController.shared.statusItemFrame, action: Toast.Action(title: L("Cancel")) {})
+            Toast.shared.updateProgress(0.4)
+            try? await Task.sleep(for: .seconds(0.5))
+            if let window = NSApp.windows.first(where: { $0.windowNumber == Toast.shared.windowNumber }),
+               let image = render(window, suffix: "-progress") { images.append(image) }
+            Toast.shared.hide()
+            try? FileManager.default.removeItem(at: file)
+            result["images"] = images
+            result["ok"] = images.count == 3
         case "popover":
             try? await Task.sleep(for: .seconds(1.5))
             AppController.shared.togglePopover(sticky: true)
@@ -249,12 +354,46 @@ enum SelfTest {
                 let out = (UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "x") + ".png"
                 try? png.write(to: URL(fileURLWithPath: out))
                 result["image"] = out
+            } else if let menu = NSApp.windows.first(where: { $0 is MenuPanel && $0.isVisible }) {
+                // Without screen capture (e.g. no permission) the menu draws itself.
+                result["image"] = render(menu, suffix: "")
             }
             result["ok"] = true
         default:
             AnnotationEditor.open(image: image)
             result["ok"] = true
         }
+    }
+
+    /// Lets a window draw its content into a PNG (no screen capture involved); returns the PNG's path.
+    private static func render(_ window: NSWindow, suffix: String) -> String? {
+        guard let view = window.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        let out = (UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "x") + suffix + ".png"
+        return (try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: out))) != nil ? out : nil
+    }
+
+    /// Captures windows separately and places them on one picture as they sit on screen; returns the PNG's path.
+    private static func composite(_ windows: [(number: Int, frame: CGRect)]) async -> String? {
+        guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
+              let first = windows.first else { return nil }
+        let union = windows.dropFirst().reduce(first.frame) { $0.union($1.frame) }.insetBy(dx: -20, dy: -20)
+        let scale = NSScreen.screens.first { $0.frame.intersects(first.frame) }?.backingScaleFactor ?? 2
+        guard let ctx = CGContext(data: nil, width: Int(union.width * scale), height: Int(union.height * scale), bitsPerComponent: 8,
+                                  bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.setFillColor(NSColor(white: 0.35, alpha: 1).cgColor)
+        ctx.fill(CGRect(x: 0, y: 0, width: ctx.width, height: ctx.height))
+        for (number, frame) in windows {
+            guard let window = content.windows.first(where: { Int($0.windowID) == number }),
+                  let cg = try? await Screenshots.captureWindow(window) else { continue }
+            ctx.draw(cg, in: CGRect(x: (frame.minX - union.minX) * scale, y: (frame.minY - union.minY) * scale,
+                                    width: frame.width * scale, height: frame.height * scale))
+        }
+        guard let cg = ctx.makeImage(), let png = Screenshots.pngData(cg) else { return nil }
+        let out = (UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "x") + ".png"
+        try? png.write(to: URL(fileURLWithPath: out))
+        return out
     }
 
     /// A 1200 × 800 test picture with some shapes and text.
@@ -281,4 +420,27 @@ enum SelfTest {
         let bytes = [24, 16, 8, 0].map { UInt8((code >> $0) & 0xFF) }
         return String(bytes: bytes, encoding: .ascii) ?? "\(code)"
     }
+}
+
+/// Minimal drag for the "drop" mode: only the pasteboard matters to the drop target.
+private final class TestDrag: NSObject, NSDraggingInfo {
+    let draggingPasteboard: NSPasteboard
+    init(pasteboard: NSPasteboard) { draggingPasteboard = pasteboard }
+
+    var draggingDestinationWindow: NSWindow? { nil }
+    var draggingSourceOperationMask: NSDragOperation { .copy }
+    var draggingLocation: NSPoint { .zero }
+    var draggedImageLocation: NSPoint { .zero }
+    var draggedImage: NSImage? { nil }
+    var draggingSource: Any? { nil }
+    var draggingSequenceNumber: Int { 1 }
+    var draggingFormation: NSDraggingFormation = .default
+    var animatesToDestination = false
+    var numberOfValidItemsForDrop = 2
+    var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+    func slideDraggedImage(to screenPoint: NSPoint) {}
+    func enumerateDraggingItems(options enumOpts: NSDraggingItemEnumerationOptions = [], for view: NSView?,
+                                classes classArray: [AnyClass], searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:],
+                                using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
+    func resetSpringLoading() {}
 }

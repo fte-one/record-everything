@@ -40,6 +40,10 @@ struct StatusPopoverView: View {
             .disabled(recorder.isActive)
             .opacity(recorder.isActive ? 0.45 : 1)
 
+            section("03", L("Share")) {
+                ShareTile(shortcut: "⌘ + O") { run { FileSharing.choose() } }
+            }
+
             if !uploads.isConfigured {
                 Button { run { AppController.shared.showSettings(tab: .upload) } } label: {
                     Label(L("Set up uploading to Cloudflare R2"), systemImage: "exclamationmark.triangle.fill")
@@ -51,7 +55,7 @@ struct StatusPopoverView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    sectionTitle("03", L("History"))
+                    sectionTitle("04", L("History"))
                     Spacer()
                     PillTabs(selection: $listTab, items: [
                         ("uploads", L("Uploads"), history.records.count),
@@ -331,6 +335,42 @@ private struct RecordTile: View {
     }
 }
 
+/// Quieter, dashed tile for sharing any file: it opens the file picker and teaches the drop onto the menu bar icon.
+private struct ShareTile: View {
+    let shortcut: String
+    let action: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.up.doc.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 28, height: 28)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Theme.accent.opacity(0.16)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L("Upload file & copy link")).font(.system(size: 12, weight: .semibold))
+                    Text(L("Or drag files onto the menu bar icon")).font(.system(size: 10.5)).foregroundStyle(Theme.secondary)
+                }
+                .lineLimit(1)
+                Spacer(minLength: 4)
+                KeyCaps(display: shortcut)
+            }
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(RoundedRectangle(cornerRadius: 12).fill(hover ? Theme.accent.opacity(0.08) : Color.white.opacity(0.03)))
+            .overlay(RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(hover ? Theme.accent.opacity(0.75) : Color.white.opacity(0.18), style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
+            .animation(.easeOut(duration: 0.15), value: hover)
+            .contentShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .help(L("Upload File…"))
+        .onHover { hover = $0 }
+    }
+}
+
 /// Capsule switch with a sliding highlight and item counts.
 private struct PillTabs: View {
     @Binding var selection: String
@@ -421,7 +461,7 @@ private struct UploadRow: View {
             .onDisappear { UploadPreview.shared.hide(record.id) }
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(record.fileName).font(.system(size: 12, weight: .medium)).lineLimit(1).truncationMode(.middle)
+                Text(record.displayName).font(.system(size: 12, weight: .medium)).lineLimit(1).truncationMode(.middle)
                 Text(record.date.formatted(.relative(presentation: .named))).font(.system(size: 10)).foregroundStyle(Theme.secondary)
             }
             Spacer(minLength: 4)

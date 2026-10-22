@@ -33,7 +33,7 @@ final class MenuPanelController: NSObject, NSWindowDelegate {
         let visible = screen.visibleFrame
 
         // The list shrinks on small screens so the whole menu stays visible.
-        let listHeight = min(300, max(110, visible.height - 16 - 430))
+        let listHeight = min(300, max(110, visible.height - 16 - 510))
         let host = KeyCatchingHostingView(rootView: StatusPopoverView(listHeight: listHeight) { [weak self] in self?.close() }
             .environment(\.colorScheme, .dark)
             .tint(Theme.accent))

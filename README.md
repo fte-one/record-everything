@@ -16,8 +16,15 @@ Mikrofon mitschneiden, Aufnahmen in einer Bibliothek verwalten, abspielen und sc
 - **Screenshot & Link kopieren** (⌘↑): Das Bild landet auf Cloudflare R2, der Link ist sofort in der
   Zwischenablage.
 - **Screenshot & Bild kopieren** (⌘↓): Das Bild liegt sofort in der Zwischenablage.
+- **Datei teilen**: Beliebige Dateien im Menü unter „Datei hochladen & Link kopieren“ (⌘O) auswählen oder
+  Richtung Menüleisten-Symbol ziehen: Dann klappt darunter eine große Ablagefläche auf, die man nicht
+  verfehlt und die über Tableisten liegt (das Symbol selbst nimmt Dateien ebenso an). Die Fläche sagt,
+  was beim Loslassen passiert; während des Uploads zeigt das Symbol einen Pfeil, große Dateien bekommen
+  Fortschritt und „Abbrechen“. Ordner gehen als ZIP hoch, mehrere Dateien ergeben einen Link pro
+  Zeile. Der Link bleibt kurz, beim Herunterladen behält die Datei ihren Namen (`Content-Disposition`).
+  Grenze: 5 GB pro Datei.
 - **Menüleiste als Zentrale**: Das Menü bündelt die drei Screenshot-Aktionen, Bildschirm-, Kamera-
-  und Audioaufnahme sowie umschaltbar die letzten **Uploads** (Link kopieren, im Browser öffnen; beim
+  und Audioaufnahme, das Teilen von Dateien sowie umschaltbar die letzten **Uploads** (Link kopieren, im Browser öffnen; beim
   Überfahren des Vorschaubilds erscheint das hochgeladene Bild groß neben dem Menü) und die
   **Aufnahmen** (öffnen, schneiden, hochladen, im Finder zeigen, AirDrop, löschen). Einstellungen,
   Updates, Info und Beenden stecken im Zahnrad-Menü. Wahlweise ohne Dock-Symbol.
@@ -156,13 +163,16 @@ Prüft die Aufnahme-Engine ohne Bedienung und schreibt Ergebnis und Metadaten al
 open "build/Record Everything.app" --args -RecordEverythingSelfTest screen -RecordEverythingSelfTestOutput /tmp/result.json
 ```
 
-Modi: `screen`, `region`, `pause`, `audio`, `screenshot`, `upload`, `annotate`, `popover`, `preview`,
+Modi: `screen`, `region`, `pause`, `audio`, `screenshot`, `upload`, `files`, `drop`, `drophint`, `annotate`,
+`popover`, `preview`,
 `settings`, `voicemix` (Ton einer vorhandenen Datei rendern: `-RecordEverythingSelfTestInput <Datei>`,
 `-RecordEverythingSelfTestTracks system,microphone`; schreibt eine Kopie);
-`-RecordEverythingSelfTestMic YES` nimmt das Mikrofon mit auf. `upload` braucht einen Test-Endpunkt
-(`-RecordEverythingTestEndpoint`, `-RecordEverythingTestBucket`, `-RecordEverythingTestPublic`,
-`-RecordEverythingTestAccessKey`, `-RecordEverythingTestSecret`) und lässt Zwischenablage und Verlauf
-unverändert.
+`-RecordEverythingSelfTestMic YES` nimmt das Mikrofon mit auf. `upload`, `files` (Datei mit Umlauten, Ordner
+als ZIP, 3-MB-Datei, abgebrochener Upload) und `drop` (Datei und Ordner auf dem Menüleisten-Symbol und auf
+der Ablagefläche abgelegt) brauchen einen Test-Endpunkt (`-RecordEverythingTestEndpoint`, `-RecordEverythingTestBucket`,
+`-RecordEverythingTestPublic`, `-RecordEverythingTestAccessKey`, `-RecordEverythingTestSecret`) und lassen
+Zwischenablage und Verlauf unverändert. `drophint` zeichnet die Ablagefläche (wartend und zum
+Loslassen) und den Fortschritt mit „Abbrechen“ als Bilder.
 
 ## Aufbau
 

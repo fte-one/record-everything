@@ -63,9 +63,31 @@ enum FilenamePattern {
 struct UploadRecord: Codable, Identifiable, Hashable {
     var id = UUID()
     var url: URL
+    /// Object name in the bucket.
     var fileName: String
     var date: Date
     var thumbnailPath: String?
+    /// Name of the uploaded file, when it had one worth keeping (shared files, recordings).
+    var originalName: String?
+
+    var displayName: String { originalName ?? fileName }
+}
+
+/// One file to upload. `name` is what a downloader sees: it travels in Content-Disposition and titles the
+/// history entry, while the link itself follows the file name pattern.
+struct UploadItem {
+    var fileURL: URL
+    var name: String?
+    /// Fills %filename% in the pattern; defaults to `name` without its extension.
+    var originalName: String?
+    var thumbnail: NSImage?
+
+    init(fileURL: URL, name: String? = nil, originalName: String? = nil, thumbnail: NSImage? = nil) {
+        self.fileURL = fileURL
+        self.name = name
+        self.originalName = originalName ?? name.map { ($0 as NSString).deletingPathExtension }
+        self.thumbnail = thumbnail
+    }
 }
 
 @MainActor
@@ -112,8 +134,20 @@ final class UploadManager: ObservableObject {
 
     enum UploadError: LocalizedError {
         case notConfigured
-        var errorDescription: String? { L("Uploading is not set up yet. Add your Cloudflare R2 details in the settings.") }
+        case tooLarge(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .notConfigured: return L("Uploading is not set up yet. Add your Cloudflare R2 details in the settings.")
+            case .tooLarge(let name): return String(format: L("%@ is larger than 5 GB."), name)
+            }
+        }
     }
+
+    /// Largest object a single S3 PUT accepts.
+    static let maxFileSize: Int64 = 5 * 1024 * 1024 * 1024
+    /// From this total size on, notices show a progress bar and a cancel button.
+    private static let progressThreshold: Int64 = 2_000_000
 
     var accessKeyID: String {
         get { Keychain.get("accessKeyID") ?? "" }
@@ -150,57 +184,133 @@ final class UploadManager: ObservableObject {
         return currentSettings.publicURL(for: key)!
     }
 
-    /// Uploads a file, puts the public link on the clipboard and records it. Returns the link.
-    @discardableResult
-    func upload(fileURL: URL, originalName: String? = nil, thumbnail: NSImage? = nil) async -> URL? {
-        let settings = currentSettings
-        let client: S3Client
+    /// The client; without one it points out the missing setup and opens the upload settings.
+    func requireClient(anchor: CGRect? = nil) -> S3Client? {
         do {
-            client = try self.client()
+            return try client()
         } catch {
-            Toast.shared.show(error.localizedDescription, symbol: "exclamationmark.triangle.fill", style: .error, duration: 5)
+            Toast.shared.show(error.localizedDescription, symbol: "exclamationmark.triangle.fill", style: .error, duration: 5, anchor: anchor)
             AppController.shared.showSettings(tab: .upload)
             return nil
         }
-        let ext = fileURL.pathExtension.isEmpty ? "bin" : fileURL.pathExtension
-        let key = FilenamePattern.make(settings.filenamePattern, fileExtension: ext, originalName: originalName)
-        let contentType = UTType(filenameExtension: ext)?.preferredMIMEType ?? "application/octet-stream"
-        guard let publicURL = settings.publicURL(for: key) else { return nil }
+    }
+
+    /// Uploads a file, puts the public link on the clipboard and records it. Returns the link.
+    @discardableResult
+    func upload(fileURL: URL, originalName: String? = nil, thumbnail: NSImage? = nil) async -> URL? {
+        await upload([UploadItem(fileURL: fileURL, originalName: originalName, thumbnail: thumbnail)]).first
+    }
+
+    /// Uploads files one after another, puts the public links on the clipboard (one per line) and records them.
+    /// `anchor` shows the notices below it (the menu bar icon) instead of at the top center. Returns the links.
+    @discardableResult
+    func upload(_ items: [UploadItem], anchor: CGRect? = nil) async -> [URL] {
+        guard !items.isEmpty, let client = requireClient(anchor: anchor) else { return [] }
+        let settings = currentSettings
+        let sizes = items.map { Self.fileSize($0.fileURL) }
+        if let index = sizes.firstIndex(where: { $0 > Self.maxFileSize }) {
+            let error = UploadError.tooLarge(items[index].name ?? items[index].fileURL.lastPathComponent)
+            Toast.shared.show(L("Upload failed") + ": " + error.localizedDescription, symbol: "xmark.octagon.fill",
+                              style: .error, duration: 6, anchor: anchor)
+            return []
+        }
+        let total = sizes.reduce(0, +)
+        let showsProgress = total > Self.progressThreshold
 
         activeUploads += 1
         defer { activeUploads -= 1 }
-        let size = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber)?.int64Value ?? 0
-        Toast.shared.show(L("Uploading…"), symbol: "arrow.up.circle", style: .progress, duration: nil)
-        do {
-            try await client.putObject(key: key, fileURL: fileURL, contentType: contentType) { fraction in
-                guard size > 2_000_000 else { return }
-                Task { @MainActor in Toast.shared.updateProgress(fraction) }
+        var links: [URL] = []
+        var failures: [Error] = []
+        var cancelled = false
+        var sent: Int64 = 0
+        for (index, item) in items.enumerated() {
+            let ext = item.fileURL.pathExtension.isEmpty ? "bin" : item.fileURL.pathExtension
+            let key = FilenamePattern.make(settings.filenamePattern, fileExtension: ext, originalName: item.originalName)
+            guard let publicURL = settings.publicURL(for: key) else { continue }
+            let done = sent, size = sizes[index]
+            let work = Task {
+                try await client.putObject(key: key, fileURL: item.fileURL, contentType: Self.contentType(forExtension: item.fileURL.pathExtension),
+                                           contentDisposition: item.name.map(Self.contentDisposition)) { fraction in
+                    guard showsProgress else { return }
+                    Task { @MainActor in Toast.shared.updateProgress((Double(done) + fraction * Double(size)) / Double(total)) }
+                }
             }
-        } catch {
-            Toast.shared.show(L("Upload failed") + ": " + error.localizedDescription, symbol: "xmark.octagon.fill", style: .error, duration: 6)
-            return nil
+            let title = items.count > 1 ? String(format: L("Uploading %d of %d…"), index + 1, items.count) : L("Uploading…")
+            Toast.shared.show(title, detail: item.name, symbol: "arrow.up.circle", style: .progress, duration: nil, anchor: anchor,
+                              action: showsProgress ? Toast.Action(title: L("Cancel")) { work.cancel() } : nil)
+            if showsProgress && done > 0 { Toast.shared.updateProgress(Double(done) / Double(total)) }
+            do {
+                try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
+            } catch {
+                if work.isCancelled {
+                    cancelled = true
+                    break
+                }
+                failures.append(error)
+                continue
+            }
+            sent += size
+            links.append(publicURL)
+            let thumbnail = saveThumbnail(item.thumbnail ?? NSImage(contentsOf: item.fileURL), key: key)
+            UploadHistory.shared.add(UploadRecord(url: publicURL, fileName: key, date: Date(), thumbnailPath: thumbnail, originalName: item.name))
         }
 
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(publicURL.absoluteString, forType: .string)
-        UploadHistory.shared.add(UploadRecord(url: publicURL, fileName: key, date: Date(),
-                                              thumbnailPath: saveThumbnail(thumbnail ?? NSImage(contentsOf: fileURL), key: key)))
-        if settings.playSound { NSSound(named: "Glass")?.play() }
-        Toast.shared.show(L("Link copied"), detail: publicURL.absoluteString, symbol: "checkmark.circle.fill", style: .success, duration: 2.5)
-        return publicURL
+        if !links.isEmpty {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(links.map(\.absoluteString).joined(separator: "\n"), forType: .string)
+            if settings.playSound && !cancelled { NSSound(named: "Glass")?.play() }
+        }
+        let copied = links.count == 1 ? L("Link copied") : String(format: L("%d links copied"), links.count)
+        if cancelled {
+            Toast.shared.show(L("Upload cancelled"), detail: links.isEmpty ? nil : copied, symbol: "xmark.circle.fill",
+                              style: .info, duration: 2.5, anchor: anchor)
+        } else if links.isEmpty, let error = failures.first {
+            Toast.shared.show(L("Upload failed") + ": " + error.localizedDescription, symbol: "xmark.octagon.fill",
+                              style: .error, duration: 6, anchor: anchor)
+        } else if failures.isEmpty {
+            Toast.shared.show(copied, detail: links.count == 1 ? links[0].absoluteString : L("One link per line"),
+                              symbol: "checkmark.circle.fill", style: .success, duration: 2.5, anchor: anchor)
+        } else {
+            Toast.shared.show(copied + " · " + String(format: L("%d failed"), failures.count), detail: failures[0].localizedDescription,
+                              symbol: "exclamationmark.triangle.fill", style: .error, duration: 6, anchor: anchor)
+        }
+        return links
     }
 
     /// Uploads a recording from the library.
     func upload(_ item: MediaItem) {
         Task {
             let thumb = item.kind == .audio ? nil : await MediaInfoCache.shared.thumbnail(for: item.url)
-            await upload(fileURL: item.url, originalName: item.title, thumbnail: thumb)
+            await upload([UploadItem(fileURL: item.url, name: item.url.lastPathComponent, originalName: item.title, thumbnail: thumb)])
         }
+    }
+
+    private static func fileSize(_ url: URL) -> Int64 {
+        (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+    }
+
+    /// Text goes out as UTF-8 so browsers show umlauts correctly.
+    static func contentType(forExtension ext: String) -> String {
+        guard !ext.isEmpty, let mime = UTType(filenameExtension: ext)?.preferredMIMEType else { return "application/octet-stream" }
+        return mime.hasPrefix("text/") ? mime + "; charset=utf-8" : mime
+    }
+
+    /// `inline` keeps images, PDFs and videos viewable in the browser; a download keeps the original name
+    /// (RFC 6266, with an ASCII fallback and the UTF-8 name of RFC 5987).
+    static func contentDisposition(for name: String) -> String {
+        // File names come decomposed from the file system ("u" + "¨"); send them composed.
+        let name = name.precomposedStringWithCanonicalMapping
+        let ascii = name.applyingTransform(StringTransform("Latin-ASCII"), reverse: false) ?? name
+        let fallback = String(ascii.map { c -> Character in
+            c.unicodeScalars.allSatisfy { (0x20..<0x7F).contains($0.value) } && c != "\"" && c != "\\" ? c : "_"
+        })
+        return "inline; filename=\"\(fallback)\"; filename*=UTF-8''\(S3Client.encodePath(name))"
     }
 
     private func saveThumbnail(_ image: NSImage?, key: String) -> String? {
         guard let image, let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
-        let maxSide: CGFloat = 160
+        // Large enough for the hover preview of files that have no full-size image online.
+        let maxSide: CGFloat = 320
         let scale = min(1, maxSide / CGFloat(max(cg.width, cg.height)))
         let size = NSSize(width: CGFloat(cg.width) * scale, height: CGFloat(cg.height) * scale)
         let small = NSImage(size: size)

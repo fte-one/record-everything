@@ -27,12 +27,13 @@ struct S3Client {
         }
     }
 
-    /// Uploads a file. `progress` receives values from 0 to 1.
-    func putObject(key: String, fileURL: URL, contentType: String, progress: (@Sendable (Double) -> Void)? = nil) async throws {
-        var request = signedRequest(method: "PUT", key: key, extraHeaders: [
-            "content-type": contentType,
-            "cache-control": "public, max-age=31536000, immutable",
-        ])
+    /// Uploads a file. `contentDisposition` is stored with the object and sent back on download.
+    /// `progress` receives values from 0 to 1.
+    func putObject(key: String, fileURL: URL, contentType: String, contentDisposition: String? = nil,
+                   progress: (@Sendable (Double) -> Void)? = nil) async throws {
+        var headers = ["content-type": contentType, "cache-control": "public, max-age=31536000, immutable"]
+        if let contentDisposition { headers["content-disposition"] = contentDisposition }
+        var request = signedRequest(method: "PUT", key: key, extraHeaders: headers)
         request.httpMethod = "PUT"
         let delegate = ProgressDelegate(progress: progress)
         let (data, response) = try await URLSession.shared.upload(for: request, fromFile: fileURL, delegate: delegate)
@@ -77,7 +78,11 @@ struct S3Client {
                      date: Date) -> (headers: [String: String], authorization: String, signature: String) {
         let amzDate = format(date, "yyyyMMdd'T'HHmmss'Z'")
         let day = format(date, "yyyyMMdd")
-        var headers = extra.reduce(into: [String: String]()) { $0[$1.key.lowercased()] = $1.value.trimmingCharacters(in: .whitespaces) }
+        // Canonical header values are trimmed with inner runs of spaces collapsed; the request sends them the same way.
+        var headers = extra.reduce(into: [String: String]()) {
+            $0[$1.key.lowercased()] = $1.value.trimmingCharacters(in: .whitespaces)
+                .replacingOccurrences(of: " {2,}", with: " ", options: .regularExpression)
+        }
         headers["host"] = host
         headers["x-amz-content-sha256"] = payloadHash
         headers["x-amz-date"] = amzDate

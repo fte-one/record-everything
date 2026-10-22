@@ -15,6 +15,29 @@ enum MenuBarIcon {
         return image
     }()
 
+    /// While a file is dragged onto the icon and while uploads run: an arrow instead of the record dot.
+    static let upload: NSImage = {
+        let image = NSImage(size: size, flipped: false) { rect in
+            drawCorners(in: rect, color: .black)
+            let c = CGPoint(x: rect.midX, y: rect.midY)
+            let arrow = NSBezierPath()
+            arrow.lineWidth = 1.6
+            arrow.lineCapStyle = .round
+            arrow.lineJoinStyle = .round
+            arrow.move(to: CGPoint(x: c.x, y: c.y - 3.8))
+            arrow.line(to: CGPoint(x: c.x, y: c.y + 3.6))
+            arrow.move(to: CGPoint(x: c.x - 3, y: c.y + 0.6))
+            arrow.line(to: CGPoint(x: c.x, y: c.y + 3.6))
+            arrow.line(to: CGPoint(x: c.x + 3, y: c.y + 0.6))
+            NSColor.black.setStroke()
+            arrow.stroke()
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = L("Upload File…")
+        return image
+    }()
+
     static let recording = makeRecording(paused: false)
     static let paused = makeRecording(paused: true)
 
@@ -30,6 +53,18 @@ enum MenuBarIcon {
     }
 
     private static func draw(in rect: NSRect, frameColor: NSColor, dotColor: NSColor) {
+        drawCorners(in: rect, color: frameColor)
+
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let ring = NSBezierPath(ovalIn: CGRect(x: center.x - 3.6, y: center.y - 3.6, width: 7.2, height: 7.2))
+        ring.lineWidth = 1.3
+        dotColor.setStroke()
+        ring.stroke()
+        dotColor.setFill()
+        NSBezierPath(ovalIn: CGRect(x: center.x - 1.8, y: center.y - 1.8, width: 3.6, height: 3.6)).fill()
+    }
+
+    private static func drawCorners(in rect: NSRect, color: NSColor) {
         let frame = rect.insetBy(dx: 1.2, dy: 1.2)
         let arm: CGFloat = 4.2
         let corners = NSBezierPath()
@@ -42,15 +77,7 @@ enum MenuBarIcon {
             corners.line(to: p)
             corners.line(to: CGPoint(x: p.x, y: p.y + dy * arm))
         }
-        frameColor.setStroke()
+        color.setStroke()
         corners.stroke()
-
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        let ring = NSBezierPath(ovalIn: CGRect(x: center.x - 3.6, y: center.y - 3.6, width: 7.2, height: 7.2))
-        ring.lineWidth = 1.3
-        dotColor.setStroke()
-        ring.stroke()
-        dotColor.setFill()
-        NSBezierPath(ovalIn: CGRect(x: center.x - 1.8, y: center.y - 1.8, width: 3.6, height: 3.6)).fill()
     }
 }
