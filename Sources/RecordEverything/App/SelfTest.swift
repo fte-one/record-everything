@@ -15,7 +15,7 @@ enum SelfTest {
         let output = UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "recordeverything-selftest.json"
         Task {
             var result: [String: Any] = ["mode": mode]
-            if ["upload", "files", "drop", "drophint", "screenshot", "annotate", "popover", "settings", "menubaricon", "voicemix", "preview"].contains(mode) {
+            if ["upload", "files", "drop", "drophint", "screenshot", "annotate", "annotatecopy", "popover", "settings", "menubaricon", "voicemix", "preview"].contains(mode) {
                 await runExtra(mode, into: &result)
                 if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]) {
                     try? data.write(to: URL(fileURLWithPath: output))
@@ -359,6 +359,47 @@ enum SelfTest {
                 result["image"] = render(menu, suffix: "")
             }
             result["ok"] = true
+        case "annotatecopy":
+            // ⌘C inside a text field must stay a text copy; ⌘C / ⌘X on the canvas copy the image and close.
+            let saved = NSPasteboard.general.string(forType: .string)
+            func editorWindow() -> NSWindow? {
+                NSApp.windows.first { $0.isVisible && ($0.identifier?.rawValue.hasPrefix("annotate-") ?? false) }
+            }
+            func press(_ key: String, code: UInt16, in window: NSWindow) async {
+                for type in [NSEvent.EventType.keyDown, .keyUp] {
+                    if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: .command,
+                                                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                                context: nil, characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: code) {
+                        NSApp.postEvent(e, atStart: false)
+                    }
+                }
+                try? await Task.sleep(for: .seconds(1))
+            }
+            var checks: [String: Bool] = [:]
+            for (key, code) in [("c", UInt16(8)), ("x", UInt16(7))] {
+                AnnotationEditor.open(image: image)
+                try? await Task.sleep(for: .seconds(1))
+                guard let window = editorWindow() else { checks["\(key)-opened"] = false; continue }
+                window.makeKeyAndOrderFront(nil)
+                // Typing text: the shortcut must leave the editor open.
+                let field = NSTextField(frame: CGRect(x: 10, y: 10, width: 100, height: 22))
+                window.contentView?.addSubview(field)
+                window.makeFirstResponder(field)
+                let before = NSPasteboard.general.changeCount
+                await press(key, code: code, in: window)
+                checks["\(key)-textFieldKeepsEditorOpen"] = editorWindow() != nil
+                checks["\(key)-textFieldLeavesImageAlone"] = NSPasteboard.general.changeCount == before || NSPasteboard.general.data(forType: .png) == nil
+                field.removeFromSuperview()
+                window.makeFirstResponder(window.contentView?.descendant(of: CanvasView.self))
+                await press(key, code: code, in: window)
+                checks["\(key)-closesEditor"] = editorWindow() == nil
+                checks["\(key)-copiedImage"] = NSPasteboard.general.data(forType: .png) != nil
+                if let w = editorWindow() { w.close() }
+            }
+            result["checks"] = checks
+            result["ok"] = !checks.isEmpty && checks.values.allSatisfy { $0 }
+            NSPasteboard.general.clearContents()
+            if let saved { NSPasteboard.general.setString(saved, forType: .string) }
         default:
             AnnotationEditor.open(image: image)
             result["ok"] = true
@@ -443,4 +484,13 @@ private final class TestDrag: NSObject, NSDraggingInfo {
                                 classes classArray: [AnyClass], searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:],
                                 using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
     func resetSpringLoading() {}
+}
+
+private extension NSView {
+    func descendant<T: NSView>(of type: T.Type) -> T? {
+        for sub in subviews {
+            if let match = sub as? T ?? sub.descendant(of: type) { return match }
+        }
+        return nil
+    }
 }

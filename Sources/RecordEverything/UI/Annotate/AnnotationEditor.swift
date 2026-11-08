@@ -33,7 +33,7 @@ struct AnnotationEditorView: View {
                 .padding(.top, 30)
                 .padding(.bottom, 8)
                 .background(Theme.panel)
-            AnnotationCanvas(model: model)
+            AnnotationCanvas(model: model, onCopy: copyAndClose)
                 .background(Color.black.opacity(0.35))
         }
         .background(Theme.background)
@@ -100,9 +100,8 @@ struct AnnotationEditorView: View {
 
             IconButton(symbol: "square.and.arrow.down", size: 28, help: L("Save as…")) { saveAs() }
             Button { copyAndClose() } label: { Label(L("Copy"), systemImage: "doc.on.doc") }
-                .keyboardShortcut("c", modifiers: [.command, .shift])
                 .controlSize(.large)
-                .help(L("Copy the image to the clipboard and close"))
+                .help(L("Copy the image to the clipboard and close") + " (⌘C)")
             Button { uploadAndClose() } label: { Label(L("Upload"), systemImage: "icloud.and.arrow.up") }
                 .keyboardShortcut(.return, modifiers: .command)
                 .buttonStyle(.borderedProminent)
@@ -137,9 +136,17 @@ struct AnnotationEditorView: View {
 /// Hosts the AppKit drawing surface.
 private struct AnnotationCanvas: NSViewRepresentable {
     @ObservedObject var model: AnnotationModel
+    let onCopy: () -> Void
 
-    func makeNSView(context: Context) -> CanvasView { CanvasView(model: model) }
-    func updateNSView(_ view: CanvasView, context: Context) { view.needsDisplay = true }
+    func makeNSView(context: Context) -> CanvasView {
+        let view = CanvasView(model: model)
+        view.onCopy = onCopy
+        return view
+    }
+    func updateNSView(_ view: CanvasView, context: Context) {
+        view.onCopy = onCopy
+        view.needsDisplay = true
+    }
 }
 
 /// Drawing surface: maps view points to image pixels and turns drags into annotations.
@@ -152,6 +159,9 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     private var moving: (id: UUID, last: CGPoint, original: [Annotation])?
     private var textField: NSTextField?
     private var textOrigin: CGPoint?
+    private var keyMonitor: Any?
+    /// ⌘C / ⌘X: copy the rendered image and close the editor.
+    var onCopy: (() -> Void)?
 
     init(model: AnnotationModel) {
         self.model = model
@@ -164,7 +174,40 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override func viewDidMoveToWindow() { window?.makeFirstResponder(self) }
+    override func viewDidMoveToWindow() {
+        removeKeyMonitor()
+        guard let window else { return }
+        window.makeFirstResponder(self)
+        // A local monitor catches ⌘C / ⌘X wherever focus sits in this window (toolbar buttons
+        // included), before the Edit menu turns them into copy:/cut: for the responder chain.
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.window === self.window, self.handleCopyShortcut(event) else { return event }
+            return nil
+        }
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil { removeKeyMonitor() }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
+    private func removeKeyMonitor() {
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
+    }
+
+    /// ⌘C, ⌘X (and the older ⌘⇧C) while no text is being typed; in a text field they keep copying text.
+    /// Handled here rather than as a SwiftUI shortcut, which would also catch ⌘C inside the text field.
+    private func handleCopyShortcut(_ event: NSEvent) -> Bool {
+        let mods = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        let responder = window?.firstResponder
+        guard let ch = event.charactersIgnoringModifiers?.lowercased(),
+              mods == .command && (ch == "c" || ch == "x") || mods == [.command, .shift] && ch == "c",
+              textField == nil, !(responder is NSText || responder is NSTextField),
+              let onCopy else { return false }
+        onCopy()
+        return true
+    }
 
     // MARK: Geometry
 

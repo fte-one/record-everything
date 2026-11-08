@@ -12,7 +12,8 @@ Mikrofon mitschneiden, Aufnahmen in einer Bibliothek verwalten, abspielen und sc
 
 - **Screenshot & markieren** (⌘→): Bereich aufziehen oder Fenster anklicken, dann Editor mit Pfeil,
   Rechteck, Ellipse, Marker, Stift, Text, Verpixeln und Zuschneiden; danach „Hochladen“ (Link in die
-  Zwischenablage) oder „Kopieren“ (Bild in die Zwischenablage).
+  Zwischenablage) oder „Kopieren“ (Bild in die Zwischenablage). ⌘C oder ⌘X kopiert das Bild ebenfalls
+  und schließt den Editor; beim Tippen eines Textes kopieren sie wie gewohnt den Text.
 - **Screenshot & Link kopieren** (⌘↑): Das Bild landet auf Cloudflare R2, der Link ist sofort in der
   Zwischenablage.
 - **Screenshot & Bild kopieren** (⌘↓): Das Bild liegt sofort in der Zwischenablage.
