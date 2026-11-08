@@ -37,6 +37,18 @@ final class AppSettings: ObservableObject {
     @Published var captureCopyHotKey: HotKeyCombo? {
         didSet { store(captureCopyHotKey, "captureCopyHotKey"); HotKeyCenter.shared.reload() }
     }
+    /// Annotation editor: shortcut that pastes into the app in front before the screenshot (default ⌘X).
+    @Published var pasteBackShortcut: HotKeyCombo? {
+        didSet { store(pasteBackShortcut, "pasteBackShortcut") }
+    }
+    /// Annotation editor: fixed apps to paste into, each with its own shortcut.
+    @Published var pasteTargets: [PasteTarget] {
+        didSet { store(pasteTargets, "pasteTargets") }
+    }
+    /// The drawing tool the editor starts with: the last one used, the arrow at first.
+    @Published var annotationTool: String {
+        didSet { defaults.set(annotationTool, forKey: "annotationTool") }
+    }
     @Published var upload: UploadSettings {
         didSet { store(upload, "upload") }
     }
@@ -65,6 +77,9 @@ final class AppSettings: ObservableObject {
         captureUploadHotKey = Self.loadHotKey("captureUploadHotKey", default: .defaultCaptureUpload)
         captureAnnotateHotKey = Self.loadHotKey("captureAnnotateHotKey", default: .defaultCaptureAnnotate)
         captureCopyHotKey = Self.loadHotKey("captureCopyHotKey", default: .defaultCaptureCopy)
+        pasteBackShortcut = Self.loadHotKey("pasteBackShortcut", default: .defaultPasteBack)
+        pasteTargets = Self.load("pasteTargets") ?? PasteTarget.installedDefaults()
+        annotationTool = defaults.string(forKey: "annotationTool") ?? AnnotationTool.arrow.rawValue
         upload = Self.load("upload") ?? UploadSettings()
         showDockIcon = defaults.object(forKey: "showDockIcon") as? Bool ?? false
         capture = Self.load("capture") ?? CaptureOptions()

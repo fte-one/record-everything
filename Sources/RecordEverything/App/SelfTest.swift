@@ -15,7 +15,7 @@ enum SelfTest {
         let output = UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "recordeverything-selftest.json"
         Task {
             var result: [String: Any] = ["mode": mode]
-            if ["upload", "files", "drop", "drophint", "screenshot", "annotate", "annotatecopy", "popover", "settings", "menubaricon", "voicemix", "preview"].contains(mode) {
+            if ["upload", "files", "drop", "drophint", "screenshot", "annotate", "annotatecopy", "paste", "popover", "settings", "menubaricon", "voicemix", "preview"].contains(mode) {
                 await runExtra(mode, into: &result)
                 if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]) {
                     try? data.write(to: URL(fileURLWithPath: output))
@@ -87,7 +87,41 @@ enum SelfTest {
         }
     }
 
-    /// upload: test image -> S3 endpoint from the arguments; screenshot: capture an area; annotate: open the editor.
+    /// Window content drawn into a bitmap; needs no screen recording permission.
+    private static func snapshot(_ window: NSWindow) -> Data? {
+        guard let view = window.contentView?.superview ?? window.contentView,
+              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        return rep.representation(using: .png, properties: [:])
+    }
+
+    private static func captureOrSnapshot(_ window: NSWindow) async -> Data? {
+        if let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
+           let scWindow = content.windows.first(where: { Int($0.windowID) == window.windowNumber }),
+           let cg = try? await Screenshots.captureWindow(scWindow), let png = Screenshots.pngData(cg) {
+            return png
+        }
+        return snapshot(window)
+    }
+
+    private static func editorWindow() -> NSWindow? {
+        NSApp.windows.first { $0.isVisible && ($0.identifier?.rawValue.hasPrefix("annotate-") ?? false) }
+    }
+
+    /// Posts a ⌘-key press to a window through the event queue, like a real keystroke.
+    private static func press(_ key: String, code: UInt16, in window: NSWindow) async {
+        for type in [NSEvent.EventType.keyDown, .keyUp] {
+            if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: .command,
+                                        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                        context: nil, characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: code) {
+                NSApp.postEvent(e, atStart: false)
+            }
+        }
+        try? await Task.sleep(for: .seconds(1))
+    }
+
+    /// upload: test image -> S3 endpoint from the arguments; screenshot: capture an area; annotate: open the editor;
+    /// annotatecopy: ⌘C / ⌘X in the editor; paste: paste into another app.
     private static func runExtra(_ mode: String, into result: inout [String: Any]) async {
         let d = UserDefaults.standard
         let image = testImage()
@@ -171,9 +205,7 @@ enum SelfTest {
             AppController.shared.showSettings(tab: tab)
             try? await Task.sleep(for: .seconds(1.5))
             if let window = NSApp.windows.first(where: { $0.isVisible && $0.title == L("Settings") }),
-               let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
-               let scWindow = content.windows.first(where: { Int($0.windowID) == window.windowNumber }),
-               let cg = try? await Screenshots.captureWindow(scWindow), let png = Screenshots.pngData(cg) {
+               let png = await captureOrSnapshot(window) {
                 let out = (UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "x") + ".png"
                 try? png.write(to: URL(fileURLWithPath: out))
                 result["image"] = out
@@ -362,19 +394,6 @@ enum SelfTest {
         case "annotatecopy":
             // ⌘C inside a text field must stay a text copy; ⌘C / ⌘X on the canvas copy the image and close.
             let saved = NSPasteboard.general.string(forType: .string)
-            func editorWindow() -> NSWindow? {
-                NSApp.windows.first { $0.isVisible && ($0.identifier?.rawValue.hasPrefix("annotate-") ?? false) }
-            }
-            func press(_ key: String, code: UInt16, in window: NSWindow) async {
-                for type in [NSEvent.EventType.keyDown, .keyUp] {
-                    if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: .command,
-                                                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
-                                                context: nil, characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: code) {
-                        NSApp.postEvent(e, atStart: false)
-                    }
-                }
-                try? await Task.sleep(for: .seconds(1))
-            }
             var checks: [String: Bool] = [:]
             for (key, code) in [("c", UInt16(8)), ("x", UInt16(7))] {
                 AnnotationEditor.open(image: image)
@@ -394,14 +413,72 @@ enum SelfTest {
                 await press(key, code: code, in: window)
                 checks["\(key)-closesEditor"] = editorWindow() == nil
                 checks["\(key)-copiedImage"] = NSPasteboard.general.data(forType: .png) != nil
+                result["\(key)-types"] = NSPasteboard.general.types?.map(\.rawValue).joined(separator: ",") ?? "-"
                 if let w = editorWindow() { w.close() }
             }
             result["checks"] = checks
             result["ok"] = !checks.isEmpty && checks.values.allSatisfy { $0 }
             NSPasteboard.general.clearContents()
             if let saved { NSPasteboard.general.setString(saved, forType: .string) }
+        case "paste":
+            // ⌘X pastes into the app in front before the screenshot, ⌘9 into a fixed target; the test app
+            // (RecordEverythingTestPasteApp) logs each ⌘V it receives to RecordEverythingTestPasteLog.
+            let d = UserDefaults.standard
+            guard let path = d.string(forKey: "RecordEverythingTestPasteApp"), let log = d.string(forKey: "RecordEverythingTestPasteLog") else {
+                result["ok"] = false
+                result["error"] = "RecordEverythingTestPasteApp / RecordEverythingTestPasteLog missing"
+                break
+            }
+            let saved = NSPasteboard.general.string(forType: .string)
+            let hadTargets = d.object(forKey: "pasteTargets") != nil
+            let savedTargets = AppSettings.shared.pasteTargets
+            result["trusted"] = PasteIntoApp.isTrusted
+            let config = NSWorkspace.OpenConfiguration()
+            config.arguments = [log]
+            guard let target = try? await NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: config) else {
+                result["ok"] = false
+                result["error"] = "test app did not launch"
+                break
+            }
+            try? await Task.sleep(for: .seconds(1.5))
+            AppSettings.shared.pasteTargets = savedTargets + [PasteTarget(
+                bundleID: target.bundleIdentifier ?? "", name: "PasteTest",
+                shortcut: HotKeyCombo(keyCode: 25, modifiers: NSEvent.ModifierFlags.command.rawValue, keyLabel: "9"))]
+            var checks: [String: Bool] = [:]
+            for (name, key, code, origin) in [("back", "x", UInt16(7), target as NSRunningApplication?), ("target", "9", UInt16(25), nil)] {
+                try? FileManager.default.removeItem(atPath: log)
+                NSApp.activate()
+                AnnotationEditor.open(image: image, origin: origin)
+                try? await Task.sleep(for: .seconds(1))
+                guard let window = editorWindow() else { checks["\(name)-opened"] = false; continue }
+                window.makeKeyAndOrderFront(nil)
+                await press(key, code: code, in: window)
+                try? await Task.sleep(for: .seconds(1.5))
+                checks["\(name)-closesEditor"] = editorWindow() == nil
+                checks["\(name)-copiedImage"] = NSPasteboard.general.data(forType: .png) != nil
+                checks["\(name)-targetInFront"] = NSWorkspace.shared.frontmostApplication?.processIdentifier == target.processIdentifier
+                if PasteIntoApp.isTrusted { checks["\(name)-pasted"] = FileManager.default.fileExists(atPath: log) }
+                editorWindow()?.close()
+            }
+            AppSettings.shared.pasteTargets = savedTargets
+            if !hadTargets { d.removeObject(forKey: "pasteTargets") }
+            target.terminate()
+            result["checks"] = checks
+            result["ok"] = !checks.isEmpty && checks.values.allSatisfy { $0 }
+            NSPasteboard.general.clearContents()
+            if let saved { NSPasteboard.general.setString(saved, forType: .string) }
         default:
-            AnnotationEditor.open(image: image)
+            // -RecordEverythingTestOrigin <bundle ID>: a running app to show as "paste back" target; the window is
+            // captured next to the JSON.
+            let origin = UserDefaults.standard.string(forKey: "RecordEverythingTestOrigin")
+                .flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0).first }
+            AnnotationEditor.open(image: image, origin: origin)
+            try? await Task.sleep(for: .seconds(1.5))
+            if let window = editorWindow(), let png = snapshot(window) {
+                let out = (UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "x") + ".png"
+                try? png.write(to: URL(fileURLWithPath: out))
+                result["image"] = out
+            }
             result["ok"] = true
         }
     }

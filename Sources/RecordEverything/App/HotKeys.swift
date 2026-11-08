@@ -11,6 +11,8 @@ struct HotKeyCombo: Codable, Equatable {
     static let defaultCaptureAnnotate = HotKeyCombo(keyCode: UInt32(kVK_RightArrow), modifiers: NSEvent.ModifierFlags.command.rawValue, keyLabel: "→")
     static let defaultCaptureUpload = HotKeyCombo(keyCode: UInt32(kVK_UpArrow), modifiers: NSEvent.ModifierFlags.command.rawValue, keyLabel: "↑")
     static let defaultCaptureCopy = HotKeyCombo(keyCode: UInt32(kVK_DownArrow), modifiers: NSEvent.ModifierFlags.command.rawValue, keyLabel: "↓")
+    /// Annotation editor: ⌘X pastes into the app that was in front before the screenshot.
+    static let defaultPasteBack = HotKeyCombo(keyCode: UInt32(kVK_ANSI_X), modifiers: NSEvent.ModifierFlags.command.rawValue, keyLabel: "X")
 
     var flags: NSEvent.ModifierFlags { NSEvent.ModifierFlags(rawValue: modifiers) }
 
@@ -47,6 +49,18 @@ struct HotKeyCombo: Codable, Equatable {
         let label = Self.specialKeyLabels[Int(event.keyCode)]
             ?? event.charactersIgnoringModifiers?.uppercased() ?? "?"
         self.init(keyCode: UInt32(event.keyCode), modifiers: mods.rawValue, keyLabel: label)
+    }
+
+    /// For shortcuts inside a window: letters and digits by the character the layout produces
+    /// (so ⌘Y means the key labelled Y on QWERTZ too), special keys by key code.
+    func matches(_ event: NSEvent) -> Bool {
+        let relevant: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
+        guard event.modifierFlags.intersection(relevant) == flags.intersection(relevant) else { return false }
+        if keyLabel.count == 1, !Self.specialKeyLabels.values.contains(keyLabel),
+           let ch = event.charactersIgnoringModifiers, !ch.isEmpty {
+            return ch.lowercased() == keyLabel.lowercased()
+        }
+        return UInt32(event.keyCode) == keyCode
     }
 
     private static let specialKeyLabels: [Int: String] = [

@@ -28,9 +28,11 @@ enum Screenshots {
         }
     }
 
-    /// Area or window -> annotation editor (upload or copy from there).
+    /// Area or window -> annotation editor (upload, copy or paste into an app from there).
     static func captureAndAnnotate() {
-        select { image in AnnotationEditor.open(image: image) }
+        // The app in front now is where ⌘X in the editor pastes.
+        let origin = FrontmostAppTracker.shared.lastExternal
+        select { image in AnnotationEditor.open(image: image, origin: origin) }
     }
 
     private static func select(then handle: @escaping (CGImage) -> Void) {

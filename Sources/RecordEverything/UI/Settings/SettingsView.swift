@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case general, upload, shortcuts
+    case general, upload, shortcuts, paste
     var id: String { rawValue }
 }
 
@@ -24,10 +24,11 @@ struct SettingsView: View {
                 Text(L("General")).tag(SettingsTab.general)
                 Text(L("Upload")).tag(SettingsTab.upload)
                 Text(L("Shortcuts")).tag(SettingsTab.shortcuts)
+                Text(L("Paste into")).tag(SettingsTab.paste)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 330)
+            .frame(width: 440)
             .padding(.top, 36)
             .padding(.bottom, 14)
 
@@ -36,6 +37,7 @@ struct SettingsView: View {
                 case .general: GeneralSettings()
                 case .upload: UploadSettingsView()
                 case .shortcuts: ShortcutSettings()
+                case .paste: PasteSettings()
                 }
             }
             .padding(.horizontal, 28)
@@ -283,6 +285,79 @@ private struct ShortcutSettings: View {
                 .foregroundStyle(Theme.secondary)
                 .gridCellColumns(2)
         }
+    }
+}
+
+/// Screenshot editor: shortcuts that paste the image straight into another app.
+private struct PasteSettings: View {
+    @ObservedObject private var settings = AppSettings.shared
+    @State private var trusted = PasteIntoApp.isTrusted
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(L("In the screenshot editor, a shortcut copies the image, switches to the app and pastes it into its input field."))
+                .font(.system(size: 12)).foregroundStyle(Theme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+                GridRow {
+                    settingsLabel(L("App you came from:"))
+                    HotKeyField(combo: $settings.pasteBackShortcut)
+                }
+                ForEach($settings.pasteTargets) { $target in
+                    GridRow {
+                        HStack(spacing: 6) {
+                            if let icon = PasteIntoApp.icon(bundleID: target.bundleID) {
+                                Image(nsImage: icon).resizable().frame(width: 18, height: 18)
+                            }
+                            Text(target.name + ":").foregroundStyle(Theme.secondary)
+                        }
+                        .gridColumnAlignment(.trailing)
+                        HStack(spacing: 8) {
+                            HotKeyField(combo: $target.shortcut)
+                            Button { settings.pasteTargets.removeAll { $0.id == target.id } } label: {
+                                Image(systemName: "minus.circle").foregroundStyle(Theme.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help(L("Remove app"))
+                        }
+                    }
+                }
+                GridRow {
+                    Color.clear.frame(width: 1, height: 1)
+                    Button(L("Add App…")) { addApp() }
+                }
+            }
+            HStack(spacing: 10) {
+                if trusted {
+                    Label(L("Automatic pasting is allowed"), systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(Theme.accent).font(.system(size: 12))
+                } else {
+                    Label(L("Needs Accessibility access to press ⌘V. Without it, the image is copied and the app comes to the front."),
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 12)).foregroundStyle(Theme.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    Button(L("Allow…")) {
+                        PasteIntoApp.requestPermission()
+                        PasteIntoApp.openAccessibilitySettings()
+                    }
+                }
+            }
+            .padding(.top, 4)
+        }
+        .onReceive(timer) { _ in trusted = PasteIntoApp.isTrusted }
+    }
+
+    private func addApp() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.prompt = L("Add")
+        guard panel.runModal() == .OK, let url = panel.url, let bundleID = Bundle(url: url)?.bundleIdentifier,
+              !settings.pasteTargets.contains(where: { $0.bundleID == bundleID }) else { return }
+        let name = FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
+        settings.pasteTargets.append(PasteTarget(bundleID: bundleID, name: name, shortcut: nil))
     }
 }
 

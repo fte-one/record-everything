@@ -2,29 +2,43 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// Opens screenshots for annotation; "Upload" and "Copy" close the window.
+/// Opens screenshots for annotation; "Upload", "Copy" and "Paste" close the window.
 @MainActor
 enum AnnotationEditor {
-    static func open(image: CGImage) {
+    /// `origin`: the app in front before the screenshot; ⌘X pastes the image there.
+    static func open(image: CGImage, origin: NSRunningApplication? = nil) {
         let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main!
         let scale = screen.backingScaleFactor
         let model = AnnotationModel(image: image, scale: scale)
+        model.tool = AnnotationTool(rawValue: AppSettings.shared.annotationTool) ?? .arrow
         let id = "annotate-\(UUID().uuidString)"
         let points = CGSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
         let maxSize = CGSize(width: screen.visibleFrame.width * 0.85, height: screen.visibleFrame.height * 0.85 - 70)
         let fit = min(1, maxSize.width / points.width, maxSize.height / points.height)
-        // Wide enough for the whole toolbar including the labelled Copy and Upload buttons.
-        let size = NSSize(width: max(960, points.width * fit + 32), height: max(460, points.height * fit + 32 + 64))
+        // Wide enough for the whole toolbar including the labelled Copy, Paste and Upload buttons.
+        let targets = AnnotationEditorView.extraTargets(origin: origin).count
+        let minWidth = 960 + (origin == nil ? 0 : 130) + CGFloat(targets) * 34
+        let size = NSSize(width: max(minWidth, points.width * fit + 32), height: max(460, points.height * fit + 32 + 64))
         WindowManager.shared.show(id: id, title: L("Edit screenshot"),
-                                  style: .init(size: size, minSize: NSSize(width: 960, height: 460), resizable: true)) {
-            AnnotationEditorView(model: model) { WindowManager.shared.close(id) }
+                                  style: .init(size: size, minSize: NSSize(width: minWidth, height: 460), resizable: true)) {
+            AnnotationEditorView(model: model, origin: origin) { WindowManager.shared.close(id) }
         }
     }
 }
 
 struct AnnotationEditorView: View {
     @ObservedObject var model: AnnotationModel
+    let origin: NSRunningApplication?
     let close: () -> Void
+    @ObservedObject private var settings = AppSettings.shared
+
+    /// Drawing tools worth starting with next time (not select, crop or text).
+    private static let rememberedTools: Set<AnnotationTool> = [.arrow, .rectangle, .ellipse, .highlight, .pen, .pixelate]
+
+    /// Fixed paste targets other than the app the screenshot came from (that one has its own button).
+    static func extraTargets(origin: NSRunningApplication?) -> [PasteTarget] {
+        AppSettings.shared.pasteTargets.filter { $0.bundleID != origin?.bundleIdentifier }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -33,11 +47,14 @@ struct AnnotationEditorView: View {
                 .padding(.top, 30)
                 .padding(.bottom, 8)
                 .background(Theme.panel)
-            AnnotationCanvas(model: model, onCopy: copyAndClose)
+            AnnotationCanvas(model: model, onShortcut: handleShortcut)
                 .background(Color.black.opacity(0.35))
         }
         .background(Theme.background)
         .ignoresSafeArea(edges: .top)
+        .onChange(of: model.tool) { _, tool in
+            if Self.rememberedTools.contains(tool) { settings.annotationTool = tool.rawValue }
+        }
     }
 
     private var toolbar: some View {
@@ -102,12 +119,78 @@ struct AnnotationEditorView: View {
             Button { copyAndClose() } label: { Label(L("Copy"), systemImage: "doc.on.doc") }
                 .controlSize(.large)
                 .help(L("Copy the image to the clipboard and close") + " (⌘C)")
+            if let origin {
+                Button { paste(into: origin, bundleID: origin.bundleIdentifier, name: PasteIntoApp.displayName(of: origin)) } label: {
+                    HStack(spacing: 6) {
+                        if let icon = origin.icon {
+                            Image(nsImage: icon).resizable().frame(width: 18, height: 18)
+                        }
+                        Text(L("Paste into app"))
+                    }
+                }
+                .controlSize(.large)
+                .help(String(format: L("Paste into %@ and close"), PasteIntoApp.displayName(of: origin)) + shortcutHint(settings.pasteBackShortcut))
+            }
+            ForEach(Self.extraTargets(origin: origin)) { target in
+                Button { paste(into: nil, bundleID: target.bundleID, name: target.name) } label: {
+                    Group {
+                        if let icon = PasteIntoApp.icon(bundleID: target.bundleID) {
+                            Image(nsImage: icon).resizable().frame(width: 22, height: 22)
+                        } else {
+                            Image(systemName: "app.dashed").font(.system(size: 16))
+                        }
+                    }
+                    .frame(width: 30, height: 28)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(String(format: L("Paste into %@ and close"), target.name) + shortcutHint(target.shortcut))
+                .accessibilityLabel(String(format: L("Paste into %@ and close"), target.name))
+            }
             Button { uploadAndClose() } label: { Label(L("Upload"), systemImage: "icloud.and.arrow.up") }
                 .keyboardShortcut(.return, modifiers: .command)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .help(L("Upload, copy the link and close"))
         }
+    }
+
+    private func shortcutHint(_ combo: HotKeyCombo?) -> String {
+        combo.map { " (\($0.display.replacingOccurrences(of: " + ", with: "")))" } ?? ""
+    }
+
+    /// Editor shortcuts, called by the canvas unless text is being typed. ⌘C copies; ⌘X (or the set
+    /// shortcut) pastes into the app the screenshot came from, and without one copies like ⌘C.
+    private func handleShortcut(_ event: NSEvent) -> Bool {
+        let mods = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        let ch = event.charactersIgnoringModifiers?.lowercased()
+        if ch == "c" && (mods == .command || mods == [.command, .shift]) {
+            copyAndClose()
+            return true
+        }
+        if let combo = settings.pasteBackShortcut, combo.matches(event) {
+            if let origin {
+                paste(into: origin, bundleID: origin.bundleIdentifier, name: PasteIntoApp.displayName(of: origin))
+            } else {
+                copyAndClose()
+            }
+            return true
+        }
+        if let target = settings.pasteTargets.first(where: { $0.shortcut?.matches(event) == true }) {
+            paste(into: nil, bundleID: target.bundleID, name: target.name)
+            return true
+        }
+        if ch == "x" && mods == .command {   // ⌘X when its shortcut was changed: still copy and close
+            copyAndClose()
+            return true
+        }
+        return false
+    }
+
+    private func paste(into app: NSRunningApplication?, bundleID: String?, name: String) {
+        guard let image = model.render() else { return }
+        close()
+        Task { await PasteIntoApp.paste(image, into: app, bundleID: bundleID, name: name) }
     }
 
     private func copyAndClose() {
@@ -136,15 +219,15 @@ struct AnnotationEditorView: View {
 /// Hosts the AppKit drawing surface.
 private struct AnnotationCanvas: NSViewRepresentable {
     @ObservedObject var model: AnnotationModel
-    let onCopy: () -> Void
+    let onShortcut: (NSEvent) -> Bool
 
     func makeNSView(context: Context) -> CanvasView {
         let view = CanvasView(model: model)
-        view.onCopy = onCopy
+        view.onShortcut = onShortcut
         return view
     }
     func updateNSView(_ view: CanvasView, context: Context) {
-        view.onCopy = onCopy
+        view.onShortcut = onShortcut
         view.needsDisplay = true
     }
 }
@@ -160,8 +243,8 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     private var textField: NSTextField?
     private var textOrigin: CGPoint?
     private var keyMonitor: Any?
-    /// ⌘C / ⌘X: copy the rendered image and close the editor.
-    var onCopy: (() -> Void)?
+    /// Editor shortcuts (⌘C, ⌘X, paste targets); returns true when it handled the event.
+    var onShortcut: ((NSEvent) -> Bool)?
 
     init(model: AnnotationModel) {
         self.model = model
@@ -178,10 +261,10 @@ final class CanvasView: NSView, NSTextFieldDelegate {
         removeKeyMonitor()
         guard let window else { return }
         window.makeFirstResponder(self)
-        // A local monitor catches ⌘C / ⌘X wherever focus sits in this window (toolbar buttons
-        // included), before the Edit menu turns them into copy:/cut: for the responder chain.
+        // A local monitor catches the editor shortcuts wherever focus sits in this window (toolbar
+        // buttons included), before the Edit menu turns ⌘C / ⌘X into copy:/cut: for the responder chain.
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, event.window === self.window, self.handleCopyShortcut(event) else { return event }
+            guard let self, event.window === self.window, self.handleShortcut(event) else { return event }
             return nil
         }
     }
@@ -196,17 +279,13 @@ final class CanvasView: NSView, NSTextFieldDelegate {
         keyMonitor = nil
     }
 
-    /// ⌘C, ⌘X (and the older ⌘⇧C) while no text is being typed; in a text field they keep copying text.
-    /// Handled here rather than as a SwiftUI shortcut, which would also catch ⌘C inside the text field.
-    private func handleCopyShortcut(_ event: NSEvent) -> Bool {
-        let mods = event.modifierFlags.intersection([.command, .shift, .option, .control])
+    /// Only while no text is being typed; in a text field ⌘C / ⌘X keep copying and cutting text.
+    /// Handled here rather than as SwiftUI shortcuts, which would also catch ⌘C inside the text field.
+    private func handleShortcut(_ event: NSEvent) -> Bool {
         let responder = window?.firstResponder
-        guard let ch = event.charactersIgnoringModifiers?.lowercased(),
-              mods == .command && (ch == "c" || ch == "x") || mods == [.command, .shift] && ch == "c",
-              textField == nil, !(responder is NSText || responder is NSTextField),
-              let onCopy else { return false }
-        onCopy()
-        return true
+        guard !event.modifierFlags.intersection([.command, .option, .control]).isEmpty, textField == nil,
+              !(responder is NSText || responder is NSTextField), let onShortcut else { return false }
+        return onShortcut(event)
     }
 
     // MARK: Geometry

@@ -12,8 +12,14 @@ Mikrofon mitschneiden, Aufnahmen in einer Bibliothek verwalten, abspielen und sc
 
 - **Screenshot & markieren** (⌘→): Bereich aufziehen oder Fenster anklicken, dann Editor mit Pfeil,
   Rechteck, Ellipse, Marker, Stift, Text, Verpixeln und Zuschneiden; danach „Hochladen“ (Link in die
-  Zwischenablage) oder „Kopieren“ (Bild in die Zwischenablage). ⌘C oder ⌘X kopiert das Bild ebenfalls
-  und schließt den Editor; beim Tippen eines Textes kopieren sie wie gewohnt den Text.
+  Zwischenablage) oder „Kopieren“ (Bild in die Zwischenablage, auch ⌘C). Der Editor startet mit dem
+  zuletzt benutzten Werkzeug, anfangs dem Pfeil.
+- **Direkt einfügen**: ⌘X im Editor kopiert das Bild, wechselt zurück in die App, die vor dem Screenshot
+  vorne war (etwa Claude), und fügt es dort ins Eingabefeld ein. Unter Einstellungen › „Einfügen in“
+  lassen sich feste Ziele mit eigenem Kürzel anlegen (ab Werk Claude ⌘1, Codex ⌘2, T3 Code ⌘3, soweit
+  installiert); sie erscheinen im Editor als App-Symbole. Für das automatische ⌘V braucht die App den
+  Zugriff auf die Bedienungshilfen, ohne ihn landet das Bild in der Zwischenablage und die App kommt nach
+  vorne. Beim Tippen eines Textes im Editor kopieren ⌘C und ⌘X wie gewohnt den Text.
 - **Screenshot & Link kopieren** (⌘↑): Das Bild landet auf Cloudflare R2, der Link ist sofort in der
   Zwischenablage.
 - **Screenshot & Bild kopieren** (⌘↓): Das Bild liegt sofort in der Zwischenablage.
