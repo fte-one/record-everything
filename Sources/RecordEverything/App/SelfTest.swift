@@ -457,7 +457,10 @@ enum SelfTest {
                 checks["\(name)-closesEditor"] = editorWindow() == nil
                 checks["\(name)-copiedImage"] = NSPasteboard.general.data(forType: .png) != nil
                 checks["\(name)-targetInFront"] = NSWorkspace.shared.frontmostApplication?.processIdentifier == target.processIdentifier
-                if PasteIntoApp.isTrusted { checks["\(name)-pasted"] = FileManager.default.fileExists(atPath: log) }
+                if PasteIntoApp.isTrusted {
+                    checks["\(name)-pasted"] = FileManager.default.fileExists(atPath: log)
+                    result["\(name)-log"] = try? String(contentsOfFile: log, encoding: .utf8)
+                }
                 editorWindow()?.close()
             }
             AppSettings.shared.pasteTargets = savedTargets

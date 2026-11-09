@@ -96,8 +96,94 @@ enum PasteIntoApp {
             }
             return false
         }
+        await focusTextInput(in: app)
         if !pressPasteMenuItem(of: app) { postCommandV() }
         return true
+    }
+
+    // MARK: Focusing the input field
+
+    private static let textRoles: Set<String> = [kAXTextAreaRole, kAXTextFieldRole, kAXComboBoxRole]
+
+    /// If no text field has focus in the app (say the user last clicked on a message), focuses its main input:
+    /// the lowest text area or field in the front window that is not a search field – the chat box in Claude,
+    /// Codex or T3 Code. Electron apps only build their accessibility tree once asked to (AXManualAccessibility).
+    static func focusTextInput(in app: NSRunningApplication) async {
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetAttributeValue(axApp, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        if let focused: AXUIElement = attribute(axApp, kAXFocusedUIElementAttribute), isTextInput(focused), !isSearchField(focused) {
+            return
+        }
+        for attempt in 0..<6 { // the tree may still be building right after AXManualAccessibility
+            if attempt > 0 { try? await Task.sleep(for: .milliseconds(250)) }
+            guard let input = mainTextInput(of: axApp) else { continue }
+            AXUIElementSetAttributeValue(input, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+            try? await Task.sleep(for: .milliseconds(120))
+            if let focused: AXUIElement = attribute(axApp, kAXFocusedUIElementAttribute), CFEqual(focused, input) { return }
+            click(input) // some apps ignore AXFocused; a click into the field always works
+            try? await Task.sleep(for: .milliseconds(150))
+            return
+        }
+    }
+
+    private static func mainTextInput(of axApp: AXUIElement) -> AXUIElement? {
+        guard let window: AXUIElement = attribute(axApp, kAXFocusedWindowAttribute) ?? attribute(axApp, kAXMainWindowAttribute) else {
+            return nil
+        }
+        let windowFrame = frame(of: window)
+        var best: (element: AXUIElement, score: CGFloat)?
+        var queue = [window], index = 0
+        let deadline = Date().addingTimeInterval(0.8)
+        while index < queue.count, index < 8000, Date() < deadline {
+            let element = queue[index]
+            index += 1
+            let role: String = attribute(element, kAXRoleAttribute) ?? ""
+            if textRoles.contains(role) {
+                let box = frame(of: element)
+                var settable: DarwinBoolean = false
+                AXUIElementIsAttributeSettable(element, kAXFocusedAttribute as CFString, &settable)
+                if settable.boolValue, !isSearchField(element), box.width >= 80, box.height > 0, windowFrame.intersects(box) {
+                    // Lowest on screen wins (chat boxes sit at the bottom); a text area beats a one-line field.
+                    let score = box.maxY + (role == kAXTextAreaRole ? 10_000 : 0)
+                    if best == nil || score > best!.score { best = (element, score) }
+                }
+                continue
+            }
+            queue.append(contentsOf: children(element))
+        }
+        return best?.element
+    }
+
+    private static func isTextInput(_ element: AXUIElement) -> Bool {
+        let role: String = attribute(element, kAXRoleAttribute) ?? ""
+        return textRoles.contains(role) || (attribute(element, "AXEditableAncestor") as AXUIElement?) != nil
+    }
+
+    private static func isSearchField(_ element: AXUIElement) -> Bool {
+        if (attribute(element, kAXSubroleAttribute) as String?) == kAXSearchFieldSubrole { return true }
+        let words = [kAXDescriptionAttribute, kAXPlaceholderValueAttribute, kAXTitleAttribute]
+            .compactMap { attribute(element, $0) as String? }.joined(separator: " ").lowercased()
+        return ["such", "search", "find", "filter"].contains { words.contains($0) }
+    }
+
+    private static func frame(of element: AXUIElement) -> CGRect {
+        var origin = CGPoint.zero, size = CGSize.zero
+        if let value: AXValue = attribute(element, kAXPositionAttribute) { AXValueGetValue(value, .cgPoint, &origin) }
+        if let value: AXValue = attribute(element, kAXSizeAttribute) { AXValueGetValue(value, .cgSize, &size) }
+        return CGRect(origin: origin, size: size)
+    }
+
+    /// Clicks the middle of an element (screen coordinates, top-left origin) and puts the pointer back.
+    private static func click(_ element: AXUIElement) {
+        let box = frame(of: element)
+        guard box.width > 0, box.height > 0 else { return }
+        let point = CGPoint(x: box.midX, y: box.midY)
+        let previous = CGEvent(source: nil)?.location
+        let source = CGEventSource(stateID: .hidSystemState)
+        for type in [CGEventType.leftMouseDown, .leftMouseUp] {
+            CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: point, mouseButton: .left)?.post(tap: .cghidEventTap)
+        }
+        if let previous { CGWarpMouseCursorPosition(previous) }
     }
 
     private static func activate(_ running: NSRunningApplication?, bundleID: String?) async -> NSRunningApplication? {
