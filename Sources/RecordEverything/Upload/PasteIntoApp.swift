@@ -82,7 +82,7 @@ enum PasteIntoApp {
     @discardableResult
     static func paste(_ image: CGImage, into running: NSRunningApplication?, bundleID: String?, name: String) async -> Bool {
         Screenshots.copy(image)
-        guard await activate(running, bundleID: bundleID) != nil else {
+        guard let app = await activate(running, bundleID: bundleID) else {
             Toast.shared.show(String(format: L("Could not open %@"), name), detail: L("The image is on the clipboard."),
                               symbol: "exclamationmark.triangle.fill", style: .error, duration: 4)
             return false
@@ -96,7 +96,7 @@ enum PasteIntoApp {
             }
             return false
         }
-        postCommandV()
+        if !pressPasteMenuItem(of: app) { postCommandV() }
         return true
     }
 
@@ -124,12 +124,41 @@ enum PasteIntoApp {
         return app
     }
 
+    /// Clicks the app's ⌘V menu item (Edit › Paste) through Accessibility: independent of the keyboard layout
+    /// and of keys the user still holds. False if the app has no such enabled item.
+    static func pressPasteMenuItem(of app: NSRunningApplication) -> Bool {
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        guard let menuBar: AXUIElement = attribute(axApp, kAXMenuBarAttribute) else { return false }
+        for barItem in children(menuBar) {
+            for menu in children(barItem) {
+                for item in children(menu) {
+                    guard let char: String = attribute(item, kAXMenuItemCmdCharAttribute), char.uppercased() == "V",
+                          let modifiers: Int = attribute(item, kAXMenuItemCmdModifiersAttribute), modifiers == 0 // ⌘ only
+                    else { continue }
+                    guard (attribute(item, kAXEnabledAttribute) as Bool?) ?? true else { return false }
+                    return AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
+                }
+            }
+        }
+        return false
+    }
+
+    private static func attribute<T>(_ element: AXUIElement, _ name: String) -> T? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
+        return value as? T
+    }
+
+    private static func children(_ element: AXUIElement) -> [AXUIElement] {
+        attribute(element, kAXChildrenAttribute) ?? []
+    }
+
+    /// Fallback: a plain ⌘V keystroke. No unicode string on the event – with one, apps no longer treat it as ⌘V.
     private static func postCommandV() {
         let source = CGEventSource(stateID: .hidSystemState)
         for down in [true, false] {
             guard let event = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: down) else { continue }
             event.flags = .maskCommand
-            event.keyboardSetUnicodeString(stringLength: 1, unicodeString: [UniChar(0x76)]) // "v" on any layout
             event.post(tap: .cghidEventTap)
         }
     }
