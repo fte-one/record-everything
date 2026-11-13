@@ -321,3 +321,12 @@
 "⇧ Shift" = "⇧ Umschalt";
 "⌥ Option" = "⌥ Wahl";
 "⌃ Control" = "⌃ Control";
+"Images" = "Bilder";
+"Paths" = "Pfade";
+"Images: the screenshots are pasted into the input field before the prompt (works over SSH too). Paths: the prompt names the files (agent on this Mac only)." = "Bilder: Die Screenshots werden vor dem Prompt ins Eingabefeld eingefügt (geht auch per SSH). Pfade: Der Prompt nennt die Dateien (nur für einen Agent auf diesem Mac).";
+"Copy images" = "Bilder kopieren";
+"Copy the screenshots as files: paste them first, then the text" = "Die Screenshots als Dateien kopieren: erst diese einfügen, dann den Text";
+"Copy text" = "Text kopieren";
+"Claude takes at most %d images per message." = "Claude nimmt höchstens %d Bilder pro Nachricht an.";
+"%d images copied" = "%d Bilder kopiert";
+"Paste them, then copy and paste the text." = "Einfügen, dann den Text kopieren und einfügen.";

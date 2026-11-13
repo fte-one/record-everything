@@ -599,6 +599,12 @@ enum SelfTest {
             checks["onlyOwnShots"] = feedback.images.count == 3 && feedback.images.allSatisfy(\.shot.isManual)
             checks["speechWithImage"] = feedback.markdown.contains("## Bilder und was dazu gesagt wurde")
             checks["reopen"] = FeedbackHistory.result(for: feedback.folder)?.images.count == feedback.images.count
+            // The Images | Paths switch rewrites the prompt and can go back without losing anything.
+            let toPaths = FeedbackComposer.convert(feedback.markdown, to: .paths, images: feedback.images, folder: feedback.folder)
+            let back = FeedbackComposer.convert(toPaths, to: .attachments, images: feedback.images, folder: feedback.folder)
+            checks["convertToPaths"] = toPaths.contains("> Screenshots im Ordner `\(feedback.folder.path)`")
+                && feedback.images.allSatisfy { toPaths.contains("Datei: `\($0.file.path)`") }
+            checks["convertRoundTrip"] = feedback.imageMode != .attachments || back == feedback.markdown
             checks["transcript"] = feedback.markdown.contains("Der Rand fehlt hier")
             if d.bool(forKey: "RecordEverythingTestExpectFallback") {
                 // The AI failed: the prompt is the protocol, with the screenshot nearest to what was said.

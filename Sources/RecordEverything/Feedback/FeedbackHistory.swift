@@ -84,6 +84,16 @@ final class FeedbackHistory: ObservableObject {
         reload()
     }
 
+    /// Remembers the chosen way of handing over the images for this session.
+    static func setImageMode(_ mode: FeedbackImageMode, in folder: URL) {
+        guard var meta = meta(in: folder) else { return }
+        meta.imageMode = mode
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try? encoder.encode(meta).write(to: folder.appendingPathComponent(FeedbackMeta.fileName))
+    }
+
     // MARK: Reading a folder
 
     static func result(for folder: URL) -> FeedbackResult? {

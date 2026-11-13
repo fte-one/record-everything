@@ -24,11 +24,23 @@ enum FeedbackReview {
 final class FeedbackReviewModel: ObservableObject {
     let result: FeedbackResult
     @Published var markdown: String
+    /// Images pasted as attachments, or file paths in the text: applies to copying and pasting, and becomes the
+    /// default for the next sessions.
+    @Published var mode: FeedbackImageMode {
+        didSet {
+            guard mode != oldValue else { return }
+            markdown = FeedbackComposer.convert(markdown, to: mode, images: result.images, folder: result.folder)
+            save()
+            FeedbackHistory.setImageMode(mode, in: result.folder)
+            AppSettings.shared.feedbackImageMode = mode
+        }
+    }
     let thumbnails: [Int: NSImage]
 
     init(result: FeedbackResult) {
         self.result = result
         markdown = result.markdown
+        mode = result.imageMode
         var thumbs: [Int: NSImage] = [:]
         for image in result.images {
             guard let source = CGImageSourceCreateWithURL(image.file as CFURL, nil),
@@ -127,15 +139,27 @@ struct FeedbackReviewView: View {
             Button { NSWorkspace.shared.activateFileViewerSelecting([model.result.markdownFile]) } label: {
                 Label(L("Show in Finder"), systemImage: "folder")
             }
-            Button {
-                model.save()
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(model.markdown, forType: .string)
-                Toast.shared.show(L("Prompt copied"), symbol: "doc.on.clipboard.fill", style: .success, duration: 1.8)
-            } label: {
-                Label(L("Copy"), systemImage: "doc.on.doc")
+            Picker("", selection: $model.mode) {
+                Text(L("Images")).tag(FeedbackImageMode.attachments)
+                Text(L("Paths")).tag(FeedbackImageMode.paths)
             }
-            .keyboardShortcut("c", modifiers: [.command, .shift])
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .help(L("Images: the screenshots are pasted into the input field before the prompt (works over SSH too). Paths: the prompt names the files (agent on this Mac only)."))
+            if model.mode == .attachments && !model.result.images.isEmpty {
+                Button { copyImages() } label: { Label(L("Copy images"), systemImage: "photo.on.rectangle") }
+                    .help(L("Copy the screenshots as files: paste them first, then the text"))
+                Button { copyText() } label: { Label(L("Copy text"), systemImage: "doc.on.doc") }
+                    .keyboardShortcut("c", modifiers: [.command, .shift])
+            } else {
+                Button { copyText() } label: { Label(L("Copy"), systemImage: "doc.on.doc") }
+                    .keyboardShortcut("c", modifiers: [.command, .shift])
+            }
+            if model.mode == .attachments && model.result.images.count > FeedbackImageMode.attachmentLimit {
+                Text(String(format: L("Claude takes at most %d images per message."), FeedbackImageMode.attachmentLimit))
+                    .font(.system(size: 11)).foregroundStyle(.orange)
+            }
             Spacer()
             ForEach(Array(settings.pasteTargets.enumerated()), id: \.element.id) { index, target in
                 pasteButton(target, primary: index == 0)
@@ -163,13 +187,29 @@ struct FeedbackReviewView: View {
         }
     }
 
+    private func copyText() {
+        model.save()
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(model.markdown, forType: .string)
+        Toast.shared.show(L("Prompt copied"), symbol: "doc.on.clipboard.fill", style: .success, duration: 1.8)
+    }
+
+    /// All screenshots as files, like copying them in the Finder.
+    private func copyImages() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects(model.result.images.map { $0.file as NSURL })
+        Toast.shared.show(String(format: L("%d images copied"), model.result.images.count),
+                          detail: L("Paste them, then copy and paste the text."), symbol: "photo.on.rectangle", style: .success, duration: 3)
+    }
+
     private func paste(into target: PasteTarget) {
         model.save()
         let text = model.markdown
         let result = model.result
+        let mode = model.mode
         close()
         Task {
-            if result.imageMode == .attachments, !result.images.isEmpty {
+            if mode == .attachments, !result.images.isEmpty {
                 await PasteIntoApp.pasteImages(result.images.map(\.file), text: text, into: nil, bundleID: target.bundleID, name: target.name)
             } else {
                 await PasteIntoApp.pasteText(text, into: nil, bundleID: target.bundleID, name: target.name)

@@ -330,13 +330,7 @@ enum FeedbackComposer {
             let legend = "Rote Linien habe ich selbst gezogen, um die gemeinte Stelle zu zeigen; rote Kreise sind Klicks, gelbe "
                 + "Kreise zeigen, wohin die Maus beim Sprechen zeigte, rote Rahmen sind markierte Bereiche. "
                 + "Sieh dir die Bilder an, bevor du etwas änderst."
-            switch options.imageMode {
-            case .attachments:
-                md.append("> Die \(images.count) Screenshots hängen dieser Nachricht als Bilder an, in der Reihenfolge Bild 1 bis "
-                          + "Bild \(images.count); die Nummer steht zusätzlich oben links im Bild. " + legend)
-            case .paths:
-                md.append("> Screenshots im Ordner `\(folder.path)`: Bild N ist `NN.png`, die Nummer steht oben links im Bild. " + legend)
-            }
+            md.append(screenshotsLine(options.imageMode, count: images.count, folder: folder) + legend)
         }
         if let warning { md.append(">"); md.append("> ⚠️ \(warning)") }
         md.append("")
@@ -410,6 +404,40 @@ enum FeedbackComposer {
             md.append("")
         }
         return md.joined(separator: "\n")
+    }
+
+    /// The line that tells the agent where the screenshots are; it ends with "oben links im Bild. ".
+    static func screenshotsLine(_ mode: FeedbackImageMode, count: Int, folder: URL) -> String {
+        switch mode {
+        case .attachments:
+            return "> Die \(count) Screenshots hängen dieser Nachricht als Bilder an, in der Reihenfolge Bild 1 bis "
+                + "Bild \(count); die Nummer steht zusätzlich oben links im Bild. "
+        case .paths:
+            return "> Screenshots im Ordner `\(folder.path)`: Bild N ist `NN.png`, die Nummer steht oben links im Bild. "
+        }
+    }
+
+    /// Switches a (possibly edited) prompt between attached images and file paths: rewrites the screenshots line
+    /// and adds or removes the "Datei:" line under each picture's heading. Everything else stays as the user left it.
+    static func convert(_ markdown: String, to mode: FeedbackImageMode, images: [FeedbackResult.Image], folder: URL) -> String {
+        var lines = markdown.components(separatedBy: "\n")
+        let marker = "oben links im Bild. "
+        if let i = lines.firstIndex(where: {
+            ($0.hasPrefix("> Die ") && $0.contains("hängen dieser Nachricht als Bilder an")) || $0.hasPrefix("> Screenshots im Ordner ")
+        }) {
+            let tail = lines[i].components(separatedBy: marker).dropFirst().joined(separator: marker)
+            lines[i] = screenshotsLine(mode, count: images.count, folder: folder) + tail
+        }
+        lines.removeAll { $0.hasPrefix("Datei: `") }
+        if mode == .paths {
+            for image in images {
+                let heading = "### Bild \(image.number)"
+                if let i = lines.firstIndex(where: { $0 == heading || $0.hasPrefix(heading + " ·") }) {
+                    lines.insert("Datei: `\(image.file.path)`", at: i + 1)
+                }
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     // MARK: Images

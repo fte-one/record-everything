@@ -46,7 +46,8 @@ Mikrofon mitschneiden, Aufnahmen in einer Bibliothek verwalten, abspielen und sc
   nummeriert sie in zeitlicher Reihenfolge oben links und legt `feedback.md`, `session.json` und `01.png` … unter
   Speicherort › `Feedback` ab. Ein Prüffenster zeigt Prompt und Bilder und fügt mit ⌘1 … in die Ziel-App ein:
   ab Werk erst die Bilder als Anhänge (höchstens 20, das geht auch, wenn der Agent per SSH auf einem Server
-  arbeitet), dann den Prompt; wahlweise nur den Prompt mit den Dateipfaden. Im Menü listet der Verlauf unter
+  arbeitet), dann den Prompt; wahlweise nur den Prompt mit den Dateipfaden. Der Umschalter „Bilder | Pfade“ im
+  Prüffenster schreibt den Prompt passend um und gilt fürs Kopieren und Einfügen. Im Menü listet der Verlauf unter
   „Feedback“ alle Sessions zum Wiederöffnen, Kopieren und Anzeigen im Finder. Ohne KI-Antwort bleibt das Protokoll mit dem
   jeweils passenden Bild. Einstellungen › „Feedback“: Tastenpaar, Screenshot-Taste, automatische Screenshots, Modell, Art und
   Höchstzahl der Bilder, Zusatzanweisungen.
