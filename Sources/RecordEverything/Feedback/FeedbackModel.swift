@@ -3,14 +3,19 @@ import CoreGraphics
 
 /// One still of the recorded window, taken at a click, a selection, the "Mark" button or when the page changed.
 struct FeedbackShot: Identifiable, Equatable {
-    enum Kind: String { case start, click, selection, mark, change, hover }
+    enum Kind: String { case start, click, selection, mark, change, hover, drawing }
     /// Where something happened, in image pixels (origin top left).
     enum Marker: Equatable {
         case click(CGPoint)
         case selection(CGRect)
         /// Where the pointer rested while the user was talking ("this here").
         case pointer(CGPoint)
+        /// A line the user drew with the shot key held.
+        case ink([CGPoint])
     }
+
+    /// Taken on purpose: the shot key, the "Mark" button or a drawing.
+    var isManual: Bool { kind == .mark || kind == .drawing }
 
     let id: Int
     let time: TimeInterval
@@ -39,6 +44,46 @@ struct FeedbackPage: Equatable {
     let time: TimeInterval
     let url: String?
     let title: String
+}
+
+/// The key for screenshots during a session: tap for a still, hold and move the mouse to draw on it.
+enum ShotKey: String, Codable, CaseIterable, Identifiable {
+    case shift, option, control
+
+    var id: String { rawValue }
+
+    /// Device-dependent bits of the left and right key (IOKit's NX_DEVICE…KEYMASK).
+    var sides: (left: UInt, right: UInt) {
+        switch self {
+        case .shift: return (0x02, 0x04)
+        case .option: return (0x20, 0x40)
+        case .control: return (0x01, 0x2000)
+        }
+    }
+
+    var flag: NSEvent.ModifierFlags {
+        switch self {
+        case .shift: return .shift
+        case .option: return .option
+        case .control: return .control
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .shift: return "⇧"
+        case .option: return "⌥"
+        case .control: return "⌃"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .shift: return L("⇧ Shift")
+        case .option: return L("⌥ Option")
+        case .control: return L("⌃ Control")
+        }
+    }
 }
 
 /// How the screenshots reach the coding agent.

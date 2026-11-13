@@ -7,6 +7,8 @@ final class FeedbackChrome {
     static let shared = FeedbackChrome()
     private var frame: ChromePanel?
     private var bar: ChromePanel?
+    private var ink: ChromePanel?
+    private let inkView = InkView()
     private let barSize = CGSize(width: 560, height: 50)
 
     /// `bounds`: the window in CoreGraphics coordinates.
@@ -41,8 +43,64 @@ final class FeedbackChrome {
     func hide() {
         frame?.orderOut(nil)
         bar?.orderOut(nil)
+        ink?.orderOut(nil)
         frame = nil
         bar = nil
+        ink = nil
+    }
+
+    // MARK: Drawing with the shot key
+
+    /// The line drawn so far, over the window (points and window in CoreGraphics coordinates).
+    func showInk(_ points: [CGPoint], in window: CGRect) {
+        let rect = WindowGeometry.appKitRect(window)
+        if ink == nil {
+            let panel = ChromePanel(rect: rect, level: .statusBar)
+            panel.ignoresMouseEvents = true
+            panel.contentView = inkView
+            ink = panel
+        }
+        ink?.setFrame(rect, display: false)
+        ink?.alphaValue = 1
+        ink?.orderFrontRegardless()
+        inkView.points = points.map { CGPoint(x: $0.x - window.minX, y: $0.y - window.minY) }
+    }
+
+    func clearInk(fade: Bool) {
+        guard let panel = ink else { return }
+        guard fade else {
+            inkView.points = []
+            panel.orderOut(nil)
+            return
+        }
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.45
+            panel.animator().alphaValue = 0
+        }, completionHandler: {
+            MainActor.assumeIsolated {
+                guard panel.alphaValue == 0 else { return }   // a new line started meanwhile
+                self.inkView.points = []
+                panel.orderOut(nil)
+            }
+        })
+    }
+
+    /// A short white flash over the window: the screenshot was taken.
+    func flash(_ window: CGRect) {
+        let panel = ChromePanel(rect: WindowGeometry.appKitRect(window), level: .statusBar)
+        panel.ignoresMouseEvents = true
+        let view = NSView()
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.45).cgColor
+        view.layer?.cornerRadius = 10
+        panel.contentView = view
+        panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.35
+            panel.animator().alphaValue = 0
+        }, completionHandler: {
+            MainActor.assumeIsolated { panel.orderOut(nil) }
+        })
     }
 
     /// Under the window, or inside its bottom edge when there is no room below.
@@ -54,6 +112,25 @@ final class FeedbackChrome {
         if origin.y < screen.visibleFrame.minY + 4 { origin.y = window.minY + 16 }
         origin.x = min(max(screen.frame.minX + 8, origin.x), screen.frame.maxX - barSize.width - 8)
         return CGRect(origin: origin, size: barSize)
+    }
+}
+
+/// The red line drawn while the shot key is held (top-left coordinates within the window).
+private final class InkView: NSView {
+    var points: [CGPoint] = [] { didSet { needsDisplay = true } }
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard points.count > 1 else { return }
+        let path = NSBezierPath()
+        path.move(to: points[0])
+        points.dropFirst().forEach { path.line(to: $0) }
+        path.lineWidth = 4
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        NSGraphicsContext.current?.cgContext.setShadow(offset: .zero, blur: 3, color: NSColor.black.withAlphaComponent(0.4).cgColor)
+        NSColor(srgbRed: 0.98, green: 0.22, blue: 0.2, alpha: 1).setStroke()
+        path.stroke()
     }
 }
 
@@ -101,7 +178,7 @@ private struct FeedbackBarView: View {
                     .overlay(alignment: .leading) {
                         Capsule().fill(Theme.accent).frame(width: 34 * CGFloat(session.level), height: 5)
                     }
-                Text(session.lastWords.isEmpty ? L("Just talk – click, select, say what to change") : "„\(session.lastWords)“")
+                Text(session.lastWords.isEmpty ? hint : "„\(session.lastWords)“")
                     .font(.system(size: 11.5))
                     .foregroundStyle(Theme.secondary)
                     .lineLimit(1)
@@ -134,6 +211,11 @@ private struct FeedbackBarView: View {
         .background(Capsule().fill(Theme.panel.opacity(0.97)))
         .overlay(Capsule().stroke(Color.white.opacity(0.1)))
         .onAppear { pulse = true }
+    }
+
+    private var hint: String {
+        let key = AppSettings.shared.feedbackShotKey.symbol
+        return String(format: L("Talk · %@ tap: screenshot · hold %@ and move: draw"), key, key)
     }
 
     private func confirmDiscard() {

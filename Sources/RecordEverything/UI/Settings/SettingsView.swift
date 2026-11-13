@@ -62,7 +62,7 @@ struct SettingsView: View {
             }
             .padding(16)
         }
-        .frame(width: 660, height: 500)
+        .frame(width: 660, height: 580)
         .background(Theme.background)
         .ignoresSafeArea(edges: .top)
     }
@@ -489,6 +489,23 @@ private struct FeedbackSettings: View {
                                 .font(.system(size: 11)).foregroundStyle(.orange)
                         }
                     }
+                }
+                GridRow {
+                    settingsLabel(L("Screenshot key:"))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Picker("", selection: $settings.feedbackShotKey) {
+                            ForEach(ShotKey.allCases) { Text($0.title).tag($0) }
+                        }
+                        .labelsHidden()
+                        .frame(width: 220)
+                        Text(String(format: L("Tap %@: screenshot. Hold %@ and move the mouse: draw on it."),
+                                    settings.feedbackShotKey.symbol, settings.feedbackShotKey.symbol))
+                            .font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                    }
+                }
+                GridRow {
+                    Color.clear.frame(width: 1, height: 1)
+                    Toggle(L("Also take screenshots automatically (clicks, page changes, pointer)"), isOn: $settings.feedbackAutoShots)
                 }
                 GridRow {
                     settingsLabel(L("AI model:"))

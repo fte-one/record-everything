@@ -32,6 +32,8 @@ enum FeedbackComposer {
         var extraInstructions: String
         var outputRoot: URL
         var imageMode: FeedbackImageMode = .attachments
+        /// Off: only the user's own screenshots go into the prompt (when there are any).
+        var autoShots = false
     }
 
     /// Most stills the AI gets to choose from.
@@ -53,14 +55,17 @@ enum FeedbackComposer {
     }
 
     static func compose(_ recording: FeedbackRecording, options: Options) async -> FeedbackResult? {
-        let candidates = selectCandidates(recording)
+        // The user's own screenshots are what they meant; the automatic ones are only the fallback.
+        let manual = recording.shots.filter(\.isManual)
+        let manualOnly = !options.autoShots && !manual.isEmpty
+        let candidates = manualOnly ? Array(manual.prefix(max(options.maxImages, 1))) : selectCandidates(recording)
         var plan: Plan?
         var warning: String?
         if recording.speech.isEmpty && candidates.isEmpty {
             warning = L("Nothing was recorded.")
         } else {
             do {
-                plan = try await askAI(recording, candidates: candidates, options: options)
+                plan = try await askAI(recording, candidates: candidates, manualOnly: manualOnly, options: options)
             } catch {
                 warning = String(format: L("The AI summary failed (%@). Below is the protocol of the session."), error.localizedDescription)
             }
@@ -76,7 +81,9 @@ enum FeedbackComposer {
             guard !order.contains(id), order.count < options.maxImages, candidates.contains(where: { $0.id == id }) else { return }
             order.append(id)
         }
-        if let plan {
+        if manualOnly {
+            candidates.forEach { use($0.id) }   // every screenshot the user took
+        } else if let plan {
             for task in plan.tasks { task.images.forEach(use) }
         } else {
             for part in recording.speech { if let shot = nearestShot(to: part, in: candidates) { use(shot.id) } }
@@ -123,7 +130,7 @@ enum FeedbackComposer {
         func score(_ shot: FeedbackShot) -> Int {
             var s: Int
             switch shot.kind {
-            case .mark: s = 40
+            case .mark, .drawing: s = 40
             case .selection: s = 30
             case .hover: s = 18
             case .click: s = 20
@@ -152,9 +159,26 @@ enum FeedbackComposer {
             ?? shots.first(where: { $0.time >= part.start - 0.5 && $0.time <= part.end + 1.5 }) ?? shots.first
     }
 
+    /// Splits what was said among the pictures: each piece belongs to the first picture taken no more than three
+    /// seconds before it began (people keep talking while and just after they take one). The rest came after.
+    static func speechGroups(_ shots: [FeedbackShot], _ speech: [FeedbackSpeech]) -> [(shot: FeedbackShot?, parts: [FeedbackSpeech])] {
+        let sorted = shots.sorted { $0.time < $1.time }
+        var groups: [(shot: FeedbackShot?, parts: [FeedbackSpeech])] = sorted.map { ($0, []) }
+        var rest: [FeedbackSpeech] = []
+        for part in speech.sorted(by: { $0.start < $1.start }) {
+            if let index = sorted.firstIndex(where: { $0.time + 3 >= part.start }) {
+                groups[index].parts.append(part)
+            } else {
+                rest.append(part)
+            }
+        }
+        if !rest.isEmpty { groups.append((nil, rest)) }
+        return groups
+    }
+
     private static func rank(_ kind: FeedbackShot.Kind) -> Int {
         switch kind {
-        case .mark: return 4
+        case .mark, .drawing: return 4
         case .selection: return 3
         case .click, .hover: return 2
         case .start, .change: return 1
@@ -177,6 +201,9 @@ enum FeedbackComposer {
     - Das Transkript stammt aus einer Spracherkennung und kann Hörfehler enthalten (z. B. "Sportschau" statt \
     "Sport-Show"). Korrigiere sie anhand der Beschriftungen auf den Bildern und nenne Elemente so, wie sie dort stehen.
     - "hier", "das da", "dieser": gemeint ist die markierte Stelle im Bild zu diesem Zeitpunkt.
+    - Bilder, die "vom Nutzer aufgenommen" sind, hat er bewusst gemacht: Jedes davon gehört zu mindestens einer \
+    Aufgabe. Was er seit dem vorigen Bild bis wenige Sekunden danach sagt, bezieht sich auf dieses Bild (siehe \
+    "Gesagtes je Bild"). Rote Linien hat er selbst gezeichnet, um die gemeinte Stelle zu zeigen.
     - Bilder: Gib pro Aufgabe die 1 bis 3 aussagekräftigsten Bilder an (Kennungen wie "K12"). Rote Kreise sind \
     Klickstellen, gelbe Kreise die Stelle, auf die die Maus beim Sprechen zeigte, rote Rahmen markierte Bereiche. \
     Nutze vor allem Bilder, auf die sich das Gesagte bezieht.
@@ -190,7 +217,7 @@ enum FeedbackComposer {
     "images": ["K3"], "quotes": ["…"]}], "questions": ["offene Frage"]}
     """
 
-    static func timeline(_ recording: FeedbackRecording, candidates: [FeedbackShot]) -> String {
+    static func timeline(_ recording: FeedbackRecording, candidates: [FeedbackShot], manualOnly: Bool = false) -> String {
         var lines: [(TimeInterval, Int, String)] = []
         for page in recording.pages {
             let title = page.title.isEmpty ? "" : "\(page.title) – "
@@ -202,11 +229,23 @@ enum FeedbackComposer {
             case .start: line += "Start der Session"
             case .click: line += "Klick (roter Kreis)"
             case .selection: line += "Bereich markiert (roter Rahmen)" + (shot.selectedText.map { ", markierter Text: „\($0)“" } ?? "")
-            case .mark: line += "vom Nutzer mit „Merken“ festgehalten"
+            case .mark: line += "vom Nutzer aufgenommen"
+            case .drawing: line += "vom Nutzer aufgenommen und mit roter Linie markiert"
             case .hover: line += "Maus zeigt beim Sprechen hierhin (gelber Kreis)"
             case .change: line += "Ansicht hat sich geändert"
             }
             lines.append((shot.time, 1, line))
+        }
+        if manualOnly {
+            // Clicks and selections without a picture still tell where the user was.
+            for shot in recording.shots where !shot.isManual {
+                switch shot.kind {
+                case .click: lines.append((shot.time, 1, "[\(feedbackClock(shot.time))] Klick (ohne Bild)"))
+                case .selection:
+                    if let text = shot.selectedText { lines.append((shot.time, 1, "[\(feedbackClock(shot.time))] Text markiert: „\(text)“")) }
+                default: break
+                }
+            }
         }
         for part in recording.speech {
             lines.append((part.start, 2, "[\(feedbackClock(part.start))–\(feedbackClock(part.end))] Gesagt: „\(part.text)“"))
@@ -214,14 +253,22 @@ enum FeedbackComposer {
         return lines.sorted { $0.0 != $1.0 ? $0.0 < $1.0 : $0.1 < $1.1 }.map(\.2).joined(separator: "\n")
     }
 
-    static func askAI(_ recording: FeedbackRecording, candidates: [FeedbackShot], options: Options) async throws -> Plan {
+    static func askAI(_ recording: FeedbackRecording, candidates: [FeedbackShot], manualOnly: Bool, options: Options) async throws -> Plan {
+        var perImage = ""
+        if manualOnly {
+            let groups = speechGroups(candidates, recording.speech)
+            perImage = "\n\nGesagtes je Bild:\n" + groups.map { group in
+                let said = group.parts.map { "„\($0.text)“" }.joined(separator: " ")
+                return "\(group.shot.map(\.key) ?? "nach dem letzten Bild"): \(said.isEmpty ? "(nichts)" : said)"
+            }.joined(separator: "\n")
+        }
         var content: [[String: Any]] = [[
             "type": "text",
             "text": """
             Session: \(feedbackClock(recording.duration)) Min., App: \(recording.appName), Fenster: \(recording.windowTitle)
 
             Zeitleiste:
-            \(timeline(recording, candidates: candidates))
+            \(timeline(recording, candidates: candidates, manualOnly: manualOnly))\(perImage)
 
             Es folgen die Bilder mit ihren Kennungen.
             """,
@@ -280,8 +327,9 @@ enum FeedbackComposer {
         if let summary = plan?.summary, !summary.isEmpty { md.append(summary); md.append("") }
         md.append("> Aufgenommen am \(date) · \(feedbackClock(recording.duration)) Min. · \(recording.appName)")
         if !images.isEmpty {
-            let legend = "Rote Kreise sind Klicks, gelbe Kreise zeigen, wohin die Maus beim Sprechen zeigte, rote Rahmen sind "
-                + "markierte Bereiche. Sieh dir die Bilder an, bevor du etwas änderst."
+            let legend = "Rote Linien habe ich selbst gezogen, um die gemeinte Stelle zu zeigen; rote Kreise sind Klicks, gelbe "
+                + "Kreise zeigen, wohin die Maus beim Sprechen zeigte, rote Rahmen sind markierte Bereiche. "
+                + "Sieh dir die Bilder an, bevor du etwas änderst."
             switch options.imageMode {
             case .attachments:
                 md.append("> Die \(images.count) Screenshots hängen dieser Nachricht als Bilder an, in der Reihenfolge Bild 1 bis "
@@ -323,42 +371,44 @@ enum FeedbackComposer {
         }
 
         if !images.isEmpty {
-            md.append("## Bilder")
+            // Each picture with what was said about it: readable on its own, also without the AI.
+            md.append("## Bilder und was dazu gesagt wurde")
             md.append("")
-            for image in images {
-                let shot = image.shot
-                var line = options.imageMode == .paths
-                    ? "- Bild \(image.number): `\(image.file.path)` · \(feedbackClock(shot.time))"
-                    : "- Bild \(image.number) · \(feedbackClock(shot.time))"
-                if let url = shot.url { line += " · \(url)" } else if let title = shot.title, !title.isEmpty { line += " · \(title)" }
-                if let text = shot.selectedText { line += " · markiert: „\(text)“" }
-                md.append(line)
+            for group in speechGroups(images.map(\.shot), recording.speech) {
+                if let shot = group.shot, let image = byShot[shot.id] {
+                    var heading = "### Bild \(image.number) · \(feedbackClock(shot.time))"
+                    if let url = shot.url { heading += " · \(url)" } else if let title = shot.title, !title.isEmpty { heading += " · \(title)" }
+                    md.append(heading)
+                    if options.imageMode == .paths { md.append("Datei: `\(image.file.path)`") }
+                    if let text = shot.selectedText { md.append("Markiert: „\(text)“") }
+                } else {
+                    md.append("### Nach dem letzten Bild")
+                }
+                let said = group.parts.map { "„\($0.text)“" }.joined(separator: " ")
+                md.append(said.isEmpty ? "(nichts gesagt)" : said)
+                md.append("")
             }
+        } else {
+            md.append("## Protokoll")
+            md.append("")
+            if recording.speech.isEmpty { md.append("- (Nichts gesagt oder nicht in Text umgewandelt.)") }
+            for part in recording.speech { md.append("- \(feedbackClock(part.start)) · „\(part.text)“") }
             md.append("")
         }
 
-        // The full protocol: nothing the AI left out is lost.
-        md.append(plan == nil ? "## Protokoll" : "## Protokoll (vollständig)")
-        md.append("")
-        var entries: [(time: TimeInterval, order: Int, line: String)] = []
         var lastURL: String?
+        var visited: [String] = []
         for page in recording.pages where page.url != lastURL || page.url == nil {
             lastURL = page.url
             let label = [page.title.isEmpty ? nil : page.title, page.url].compactMap { $0 }.joined(separator: " – ")
-            entries.append((page.time, 0, "- \(feedbackClock(page.time)) · Seite: \(label.isEmpty ? "?" : label)"))
+            if !label.isEmpty { visited.append("- \(feedbackClock(page.time)) · \(label)") }
         }
-        for part in recording.speech {
-            var line = "- \(feedbackClock(part.start)) · „\(part.text)“"
-            if let shot = nearestShot(to: part, in: images.map(\.shot)), let image = byShot[shot.id],
-               abs(shot.time - part.start) < 12 || (shot.time >= part.start && shot.time <= part.end) {
-                line += " → \(link(image))"
-            }
-            entries.append((part.start, 1, line))
+        if !visited.isEmpty {
+            md.append("## Besuchte Seiten")
+            md.append("")
+            md.append(contentsOf: visited)
+            md.append("")
         }
-        if recording.speech.isEmpty { entries.append((0, 1, "- (Nichts gesagt oder nicht in Text umgewandelt.)")) }
-        // A page change and speech in the same second: the page first.
-        md.append(contentsOf: entries.sorted { (Int($0.time), $0.order, $0.time) < (Int($1.time), $1.order, $1.time) }.map(\.line))
-        md.append("")
         return md.joined(separator: "\n")
     }
 
@@ -386,6 +436,16 @@ enum FeedbackComposer {
             ctx.strokeEllipse(in: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r))
             ctx.setFillColor(red)
             ctx.fillEllipse(in: CGRect(x: p.x - 4 * unit, y: p.y - 4 * unit, width: 8 * unit, height: 8 * unit))
+        case .ink(let points):
+            guard points.count > 1 else { break }
+            ctx.setLineCap(.round)
+            ctx.setLineJoin(.round)
+            ctx.setShadow(offset: .zero, blur: 4 * unit, color: CGColor(gray: 0, alpha: 0.45))
+            ctx.setStrokeColor(red)
+            ctx.setLineWidth(5 * unit)
+            ctx.addLines(between: points)
+            ctx.strokePath()
+            ctx.setShadow(offset: .zero, blur: 0, color: nil)
         case .pointer(let p):
             let yellow = CGColor(srgbRed: 1, green: 0.78, blue: 0.05, alpha: 1)
             let r = 24 * unit

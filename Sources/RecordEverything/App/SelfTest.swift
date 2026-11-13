@@ -531,7 +531,23 @@ enum SelfTest {
                     mouseButton: .left)?.post(tap: .cghidEventTap)
             try? await Task.sleep(for: .seconds(1.6))
             session.mark()
-            try? await Task.sleep(for: .seconds(1.5))
+            try? await Task.sleep(for: .seconds(1))
+            // Shot key: a tap is a screenshot, holding and moving draws on it, another modifier cancels.
+            let shiftLeft = NSEvent.ModifierFlags(rawValue: NSEvent.ModifierFlags.shift.rawValue | 0x02)
+            let c = CGPoint(x: bounds.midX, y: bounds.midY)
+            session.shotFlags(shiftLeft, at: c); session.shotFlags([], at: c)                       // tap
+            try? await Task.sleep(for: .seconds(0.6))
+            session.shotFlags(shiftLeft, at: c)                                                      // draw a circle
+            for i in 0...24 {
+                let a = Double(i) / 24 * 2 * .pi
+                session.shotMoved(to: CGPoint(x: c.x + 60 * cos(a), y: c.y + 40 * sin(a)))
+                try? await Task.sleep(for: .milliseconds(15))
+            }
+            session.shotFlags([], at: c)
+            try? await Task.sleep(for: .seconds(0.6))
+            session.shotFlags(shiftLeft, at: c)                                                      // ⇧⌘: not a screenshot
+            session.shotFlags(shiftLeft.union(.command), at: c); session.shotFlags([], at: c)
+            try? await Task.sleep(for: .seconds(1))
             let base = d.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "x"
             if let bar = NSApp.windows.first(where: { $0 is ChromePanel && $0.isVisible && $0.frame.height == 50 }),
                let png = await captureOrSnapshot(bar) {
@@ -540,7 +556,12 @@ enum SelfTest {
             let kinds = session.testSnapshot.shots.map(\.kind.rawValue)
             result["shots"] = kinds.joined(separator: ",")
             checks["startShot"] = kinds.contains("start")
-            checks["markShot"] = kinds.contains("mark")
+            checks["markShot"] = kinds.filter { $0 == "mark" }.count == 2   // button and key tap, not the cancelled press
+            checks["drawingShot"] = kinds.contains("drawing")
+            if let drawing = session.testSnapshot.shots.first(where: { $0.kind == .drawing }), case .ink(let points)? = drawing.marker {
+                result["inkPoints"] = points.prefix(12).map { "\(Int($0.x)),\(Int($0.y))" }.joined(separator: " ")
+                result["inkSize"] = "\(Int(drawing.pixelSize.width))x\(Int(drawing.pixelSize.height))"
+            }
             if PasteIntoApp.isTrusted {
                 checks["clickShot"] = kinds.contains("click")
                 checks["hoverShot"] = kinds.contains("hover")
@@ -571,15 +592,19 @@ enum SelfTest {
             checks["images"] = !feedback.images.isEmpty && feedback.images.allSatisfy { FileManager.default.fileExists(atPath: $0.file.path) }
             checks["chronological"] = zip(feedback.images, feedback.images.dropFirst()).allSatisfy { $0.shot.time <= $1.shot.time }
             checks["imageReference"] = feedback.imageMode == .paths
-                ? feedback.markdown.contains("- Bild 1: `\(feedback.images.first?.file.path ?? "-")`")
-                : feedback.markdown.contains("hängen dieser Nachricht als Bilder an") && feedback.markdown.contains("- Bild 1 · ")
+                ? feedback.markdown.contains("Datei: `\(feedback.images.first?.file.path ?? "-")`")
+                : feedback.markdown.contains("hängen dieser Nachricht als Bilder an") && feedback.markdown.contains("### Bild 1 · ")
                     && !feedback.markdown.contains(feedback.folder.path)
+            // Only the user's own screenshots, each with what was said about it.
+            checks["onlyOwnShots"] = feedback.images.count == 3 && feedback.images.allSatisfy(\.shot.isManual)
+            checks["speechWithImage"] = feedback.markdown.contains("## Bilder und was dazu gesagt wurde")
             checks["reopen"] = FeedbackHistory.result(for: feedback.folder)?.images.count == feedback.images.count
             checks["transcript"] = feedback.markdown.contains("Der Rand fehlt hier")
             if d.bool(forKey: "RecordEverythingTestExpectFallback") {
                 // The AI failed: the prompt is the protocol, with the screenshot nearest to what was said.
                 checks["fallbackWarning"] = feedback.warning != nil && feedback.markdown.contains("⚠️")
-                checks["fallbackProtocol"] = feedback.markdown.contains("## Protokoll") && feedback.markdown.contains("→ Bild 1")
+                checks["fallbackProtocol"] = feedback.markdown.contains("## Bilder und was dazu gesagt wurde")
+                    && feedback.markdown.contains("„Der Rand fehlt hier.“")
             } else {
                 checks["aiTasks"] = feedback.taskCount == 1 && feedback.markdown.contains("### 1. Rand ergänzen")
                     && feedback.markdown.contains("- Bilder: Bild ")

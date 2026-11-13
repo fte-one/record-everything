@@ -314,3 +314,10 @@
 "No feedback sessions yet" = "Noch keine Feedback-Sessions";
 "Copy prompt" = "Prompt kopieren";
 "Move to Trash" = "In den Papierkorb legen";
+"Screenshot key:" = "Screenshot-Taste:";
+"Tap %@: screenshot. Hold %@ and move the mouse: draw on it." = "%@ kurz drücken: Screenshot. %@ halten und Maus bewegen: darauf malen.";
+"Also take screenshots automatically (clicks, page changes, pointer)" = "Zusätzlich automatische Screenshots (Klicks, Seitenwechsel, Mauszeiger)";
+"Talk · %@ tap: screenshot · hold %@ and move: draw" = "Erzählen · %@ drücken: Screenshot · %@ halten + Maus: malen";
+"⇧ Shift" = "⇧ Umschalt";
+"⌥ Option" = "⌥ Wahl";
+"⌃ Control" = "⌃ Control";

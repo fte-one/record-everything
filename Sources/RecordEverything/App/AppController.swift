@@ -58,7 +58,7 @@ final class AppController: NSObject {
 
     func showSettings(tab: SettingsTab? = nil) {
         if let tab { SettingsNavigation.shared.tab = tab }
-        WindowManager.shared.show(id: "settings", title: L("Settings"), style: .init(size: NSSize(width: 660, height: 500))) {
+        WindowManager.shared.show(id: "settings", title: L("Settings"), style: .init(size: NSSize(width: 660, height: 580))) {
             SettingsView()
         }
     }

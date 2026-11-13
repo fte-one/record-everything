@@ -69,6 +69,14 @@ final class AppSettings: ObservableObject {
     @Published var feedbackInstructions: String {
         didSet { defaults.set(feedbackInstructions, forKey: "feedbackInstructions") }
     }
+    /// Feedback sessions: tap for a screenshot, hold and move the mouse to draw on it.
+    @Published var feedbackShotKey: ShotKey {
+        didSet { defaults.set(feedbackShotKey.rawValue, forKey: "feedbackShotKey") }
+    }
+    /// Also keep stills of clicks, page changes and the resting pointer (off: only the user's own screenshots).
+    @Published var feedbackAutoShots: Bool {
+        didSet { defaults.set(feedbackAutoShots, forKey: "feedbackAutoShots") }
+    }
     /// How the screenshots reach the agent: pasted as images (default) or as file paths.
     @Published var feedbackImageMode: FeedbackImageMode {
         didSet { defaults.set(feedbackImageMode.rawValue, forKey: "feedbackImageMode") }
@@ -117,6 +125,8 @@ final class AppSettings: ObservableObject {
         feedbackModel = defaults.string(forKey: "feedbackModel") ?? Self.defaultFeedbackModel
         feedbackMaxImages = defaults.object(forKey: "feedbackMaxImages") as? Int ?? 20
         feedbackInstructions = defaults.string(forKey: "feedbackInstructions") ?? ""
+        feedbackShotKey = defaults.string(forKey: "feedbackShotKey").flatMap(ShotKey.init(rawValue:)) ?? .shift
+        feedbackAutoShots = defaults.object(forKey: "feedbackAutoShots") as? Bool ?? false
         feedbackImageMode = defaults.string(forKey: "feedbackImageMode").flatMap(FeedbackImageMode.init(rawValue:)) ?? .attachments
         feedbackTrigger = defaults.string(forKey: "feedbackTrigger").flatMap(DoubleModifier.init(rawValue:)) ?? .command
         upload = Self.load("upload") ?? UploadSettings()

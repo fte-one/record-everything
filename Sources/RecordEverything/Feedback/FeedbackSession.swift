@@ -41,6 +41,11 @@ final class FeedbackSession: ObservableObject {
     /// The self-test has no microphone: resting the pointer counts without speech.
     private var hoverNeedsSpeech = true
     private var mouseMonitor: Any?
+    private var keyMonitors: [Any] = []
+    /// The shot key is down: the still frozen at that moment, the window then, the pointer path so far.
+    private var press: (still: FrameGrabber.Still?, bounds: CGRect, points: [CGPoint])?
+    /// Self-test: shot key presses count without the recorded app in front.
+    private var testMode = false
 
     private var shots: [FeedbackShot] = []
     private var pages: [FeedbackPage] = []
@@ -197,6 +202,9 @@ final class FeedbackSession: ObservableObject {
         dwell = nil
         lastHoverShot = .distantPast
         hoverNeedsSpeech = testAudio == nil
+        testMode = testAudio != nil
+        press = nil
+        installKeyMonitors()
         pointerTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.samplePointer() }
         }
@@ -223,7 +231,10 @@ final class FeedbackSession: ObservableObject {
     /// "Mark": keeps what is on screen right now as a still.
     func mark() {
         guard state == .running else { return }
-        if let still = grabber?.snapshot() { takeShot(.mark, still: still) }
+        if let still = grabber?.snapshot() {
+            takeShot(.mark, still: still)
+            FeedbackChrome.shared.flash(bounds)
+        }
     }
 
     /// Ends the session and builds the prompt.
@@ -251,7 +262,8 @@ final class FeedbackSession: ObservableObject {
                 extraInstructions: settings.feedbackInstructions,
                 outputRoot: UserDefaults.standard.string(forKey: "RecordEverythingTestFeedbackOutput").map { URL(fileURLWithPath: $0) }
                     ?? settings.saveFolder.appendingPathComponent("Feedback", isDirectory: true),
-                imageMode: settings.feedbackImageMode)
+                imageMode: settings.feedbackImageMode,
+                autoShots: settings.feedbackAutoShots)
             let result = await FeedbackComposer.compose(recording, options: options)
             speech = nil
             FeedbackChrome.shared.hide()
@@ -279,6 +291,9 @@ final class FeedbackSession: ObservableObject {
     }
 
     private func tearDownInput() {
+        keyMonitors.forEach(NSEvent.removeMonitor)
+        keyMonitors = []
+        if press != nil { cancelPress() }
         tick?.invalidate()
         tick = nil
         pointerTimer?.invalidate()
@@ -372,6 +387,7 @@ final class FeedbackSession: ObservableObject {
 
     private func mouse(_ event: NSEvent) {
         guard state == .running else { return }
+        if press != nil, event.type == .leftMouseDown { cancelPress() }   // Shift+click is not a screenshot
         // Where the event happened, not where the pointer is now.
         let p = event.cgEvent?.location ?? WindowGeometry.cgPoint(NSEvent.mouseLocation)
         switch event.type {
@@ -408,11 +424,95 @@ final class FeedbackSession: ObservableObject {
         }
     }
 
+    // MARK: Shot key: tap for a screenshot, hold and move the mouse to draw
+
+    private func installKeyMonitors() {
+        // The self-test drives the shot key itself; real keys and pointer moves would mix into its line.
+        guard !testMode else { return }
+        let current = { (event: NSEvent) -> CGPoint in event.cgEvent?.location ?? WindowGeometry.cgPoint(NSEvent.mouseLocation) }
+        let flags: (NSEvent) -> Void = { [weak self] event in
+            MainActor.assumeIsolated { self?.shotFlags(event.modifierFlags, at: current(event)) }
+        }
+        let other: (NSEvent) -> Void = { [weak self] _ in
+            MainActor.assumeIsolated { if self?.press != nil { self?.cancelPress() } }
+        }
+        let moved: (NSEvent) -> Void = { [weak self] event in
+            MainActor.assumeIsolated { self?.shotMoved(to: current(event)) }
+        }
+        keyMonitors = [
+            NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged, handler: flags),
+            NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { flags($0); return $0 },
+            // Shift with a letter (capitals), Shift+scroll: not a screenshot.
+            NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .scrollWheel], handler: other),
+            NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .scrollWheel]) { other($0); return $0 },
+            NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved, handler: moved),
+        ].compactMap { $0 }
+    }
+
+    /// The shot key went down or up (or another modifier joined).
+    func shotFlags(_ flags: NSEvent.ModifierFlags, at point: CGPoint) {
+        guard state == .running else {
+            if press != nil { cancelPress() }
+            return
+        }
+        let key = AppSettings.shared.feedbackShotKey
+        let mods = flags.intersection([.command, .shift, .option, .control, .function])
+        let left = flags.rawValue & key.sides.left != 0, right = flags.rawValue & key.sides.right != 0
+        guard press != nil else {
+            guard mods == key.flag, left != right,
+                  testMode || NSWorkspace.shared.frontmostApplication?.processIdentifier == appPID else { return }
+            // Freeze now: moving the pointer to draw would close hover menus and tooltips.
+            press = (grabber?.snapshot(), WindowGeometry.bounds(of: windowID) ?? bounds, [point])
+            return
+        }
+        if mods.isEmpty {
+            finishPress()
+        } else if mods != key.flag || (left && right) {
+            cancelPress()   // another modifier, or both keys (the session shortcut)
+        }
+    }
+
+    func shotMoved(to point: CGPoint) {
+        guard var current = press else { return }
+        if let last = current.points.last, hypot(point.x - last.x, point.y - last.y) < 1.5 { return }
+        current.points.append(point)
+        press = current
+        if Self.length(current.points) >= 10 {
+            FeedbackChrome.shared.showInk(current.points, in: current.bounds)
+        }
+    }
+
+    func cancelPress() {
+        press = nil
+        FeedbackChrome.shared.clearInk(fade: false)
+    }
+
+    private func finishPress() {
+        guard let done = press else { return }
+        press = nil
+        guard state == .running, let still = done.still else {
+            FeedbackChrome.shared.clearInk(fade: false)
+            return
+        }
+        if Self.length(done.points) < 10 {
+            takeShot(.mark, still: still)   // a tap: the screen as it is
+        } else {
+            let size = CGSize(width: still.image.width, height: still.image.height)
+            takeShot(.drawing, still: still, marker: .ink(done.points.map { pixel($0, image: size, in: done.bounds) }))
+        }
+        FeedbackChrome.shared.flash(done.bounds)
+        FeedbackChrome.shared.clearInk(fade: true)
+    }
+
+    private static func length(_ points: [CGPoint]) -> CGFloat {
+        zip(points, points.dropFirst()).reduce(0) { $0 + hypot($1.1.x - $1.0.x, $1.1.y - $1.0.y) }
+    }
+
     // MARK: Pointer
 
     /// "Was ist das hier?": when the pointer rests on a spot while the user talks, keep a still with the spot marked.
     private func samplePointer() {
-        guard state == .running, down == nil else { return }
+        guard state == .running, down == nil, press == nil else { return }
         let p = WindowGeometry.cgPoint(NSEvent.mouseLocation)
         guard bounds.contains(p), NSWorkspace.shared.frontmostApplication?.processIdentifier == appPID else {
             dwell = nil
