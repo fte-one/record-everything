@@ -387,7 +387,8 @@ final class FeedbackSession: ObservableObject {
 
     private func mouse(_ event: NSEvent) {
         guard state == .running else { return }
-        if press != nil, event.type == .leftMouseDown { cancelPress() }   // Shift+click is not a screenshot
+        // Shift+click is not a screenshot (the self-test's own clicks must not cancel its drawing).
+        if press != nil, event.type == .leftMouseDown, !testMode { cancelPress() }
         // Where the event happened, not where the pointer is now.
         let p = event.cgEvent?.location ?? WindowGeometry.cgPoint(NSEvent.mouseLocation)
         switch event.type {

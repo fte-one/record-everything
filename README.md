@@ -32,19 +32,24 @@ Mikrofon mitschneiden, Aufnahmen in einer Bibliothek verwalten, abspielen und sc
   oder im Menü mit Fensterwahl): Zeichnet
   das vorderste Fenster auf, während man sich durchklickt und erzählt, was anders werden soll. Ein grüner
   Rahmen blinkt auf, darunter hängt eine Leiste mit Zeit, Pegel, zuletzt erkannten Worten, „Merken“, Pause,
-  Verwerfen und „Fertig“ (oder wieder dasselbe Tastenpaar). Standbilder entstehen bei jedem Klick (Zustand vor dem Klick,
-  Klickstelle rot markiert), bei Textmarkierungen (Rahmen, markierter Text per Bedienungshilfen), bei „Merken“
-  wenn sich die Ansicht geändert und beruhigt hat, und wenn die Maus beim Sprechen eine Sekunde auf einer Stelle
-  ruht („was ist das hier?“, gelber Kreis). URL und Seitentitel liest die App jede Sekunde über die
+  Verwerfen und „Fertig“ (oder wieder dasselbe Tastenpaar). Screenshots macht man selbst: ⇧ kurz drücken (Taste
+  wählbar: ⇧, ⌥, ⌃) hält das Fenster fest; ⇧ halten und die Maus bewegen malt eine rote Linie darauf, beim Loslassen
+  wird das Bild gespeichert. Das Bild wird beim Drücken eingefroren, offene Menüs bleiben also drin; ⇧ mit einer
+  anderen Taste (Großbuchstaben), mit Klick oder Scrollen löst nichts aus. Was man seit dem vorigen Bild bis drei
+  Sekunden danach sagt, gehört zu diesem Bild. Klicks und Markierungen stehen als Text im Protokoll. Wahlweise
+  (oder wenn man keinen eigenen Screenshot gemacht hat) entstehen Bilder automatisch: bei jedem Klick (Zustand vor
+  dem Klick, rot markiert), bei Textmarkierungen (Rahmen, markierter Text), bei Seitenwechseln und wenn die Maus
+  beim Sprechen ruht (gelber Kreis). URL und Seitentitel liest die App jede Sekunde über die
   Bedienungshilfen (`AXURL` des Web-Bereichs). Das Mikrofon wird an Sprechpausen in Stücke geschnitten und
   schon während der Session über OpenRouter in Text umgewandelt. Am Ende bekommt ein KI-Modell (OpenRouter, ab
-  Werk `anthropic/claude-sonnet-5.5`) Zeitleiste und Bilder, schreibt die Aufgaben und wählt die Bilder; die App
+  Werk `anthropic/claude-sonnet-5.5`) Zeitleiste und Bilder und schreibt die Aufgaben (bei automatischen Bildern wählt es auch die Bilder); die App
   nummeriert sie in zeitlicher Reihenfolge oben links und legt `feedback.md`, `session.json` und `01.png` … unter
   Speicherort › `Feedback` ab. Ein Prüffenster zeigt Prompt und Bilder und fügt mit ⌘1 … in die Ziel-App ein:
   ab Werk erst die Bilder als Anhänge (höchstens 20, das geht auch, wenn der Agent per SSH auf einem Server
   arbeitet), dann den Prompt; wahlweise nur den Prompt mit den Dateipfaden. Im Menü listet der Verlauf unter
   „Feedback“ alle Sessions zum Wiederöffnen, Kopieren und Anzeigen im Finder. Ohne KI-Antwort bleibt das Protokoll mit dem
-  jeweils passenden Bild. Einstellungen › „Feedback“: Tastenpaar, Modell, Höchstzahl der Bilder, Zusatzanweisungen.
+  jeweils passenden Bild. Einstellungen › „Feedback“: Tastenpaar, Screenshot-Taste, automatische Screenshots, Modell, Art und
+  Höchstzahl der Bilder, Zusatzanweisungen.
 - **Screenshot & Link kopieren** (⌘↑): Das Bild landet auf Cloudflare R2, der Link ist sofort in der
   Zwischenablage.
 - **Screenshot & Bild kopieren** (⌘↓): Das Bild liegt sofort in der Zwischenablage.
