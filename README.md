@@ -28,6 +28,20 @@ Mikrofon mitschneiden, Aufnahmen in einer Bibliothek verwalten, abspielen und sc
   und der Editor übernimmt Text aus der Zwischenablage in die Notiz. Beim Einfügen in eine App folgt die
   Notiz dem Bild ins Eingabefeld. Endet die Notiz mit „in Claude einfügen“ (oder „paste into Codex“, mit
   dem Namen eines Ziels), wird sofort eingefügt.
+- **Vibe-Coding-Feedback-Session** (beide ⌘-Tasten gleichzeitig – einstellbar auf beide ⇧, beide ⌥ oder aus –
+  oder im Menü mit Fensterwahl): Zeichnet
+  das vorderste Fenster auf, während man sich durchklickt und erzählt, was anders werden soll. Ein grüner
+  Rahmen blinkt auf, darunter hängt eine Leiste mit Zeit, Pegel, zuletzt erkannten Worten, „Merken“, Pause,
+  Verwerfen und „Fertig“ (oder wieder dasselbe Tastenpaar). Standbilder entstehen bei jedem Klick (Zustand vor dem Klick,
+  Klickstelle rot markiert), bei Textmarkierungen (Rahmen, markierter Text per Bedienungshilfen), bei „Merken“
+  und wenn sich die Ansicht geändert und beruhigt hat. URL und Seitentitel liest die App jede Sekunde über die
+  Bedienungshilfen (`AXURL` des Web-Bereichs). Das Mikrofon wird an Sprechpausen in Stücke geschnitten und
+  schon während der Session über OpenRouter in Text umgewandelt. Am Ende bekommt ein KI-Modell (OpenRouter, ab
+  Werk `anthropic/claude-sonnet-5.5`) Zeitleiste und Bilder, schreibt die Aufgaben und wählt die Bilder; die App
+  nummeriert sie oben links und legt `feedback.md` mit `01.png` … unter Speicherort › `Feedback` ab. Der Prompt
+  nennt die Bilder mit vollem Pfad, damit Claude Code, Codex oder T3 Code sie selbst lesen. Ein Prüffenster
+  zeigt Prompt und Bilder und fügt mit ⌘1 … in die Ziel-App ein. Ohne KI-Antwort bleibt das Protokoll mit dem
+  jeweils passenden Bild. Einstellungen › „Feedback“: Tastenpaar, Modell, Höchstzahl der Bilder, Zusatzanweisungen.
 - **Screenshot & Link kopieren** (⌘↑): Das Bild landet auf Cloudflare R2, der Link ist sofort in der
   Zwischenablage.
 - **Screenshot & Bild kopieren** (⌘↓): Das Bild liegt sofort in der Zwischenablage.
@@ -179,9 +193,11 @@ open "build/Record Everything.app" --args -RecordEverythingSelfTest screen -Reco
 ```
 
 Modi: `screen`, `region`, `pause`, `audio`, `screenshot`, `upload`, `files`, `drop`, `drophint`, `annotate`,
-`annotatecopy`, `paste`, `frozen` (Bereich aus dem eingefrorenen Bildschirm, mit
+`annotatecopy`, `paste`, `feedback` (ganze Session auf einem Fenster von `-RecordEverythingTestPasteApp`
+mit `-RecordEverythingTestFeedbackAudio <WAV>`, `-RecordEverythingTestOpenRouterBase`, `-RecordEverythingTestFeedbackOutput`;
+mit `open -n` starten, damit die Bildschirmfreigabe der App gilt), `frozen` (Bereich aus dem eingefrorenen Bildschirm, mit
 `-RecordEverythingTestPasteApp`), `note` (⌘V in die Notiz, Sprachbefehle; mit `-RecordEverythingTestAudio <WAV>` und
-`-RecordEverythingTestOpenRouterURL` auch die Transkription gegen einen Ersatz-Server),
+`-RecordEverythingTestOpenRouterBase` (z. B. `http://127.0.0.1:8799/api/v1`) auch die Transkription gegen einen Ersatz-Server),
 `popover`, `preview`,
 `settings`, `voicemix` (Ton einer vorhandenen Datei rendern: `-RecordEverythingSelfTestInput <Datei>`,
 `-RecordEverythingSelfTestTracks system,microphone`; schreibt eine Kopie);

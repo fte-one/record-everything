@@ -18,8 +18,9 @@ final class SelectionOverlay {
     /// The frozen image of the confirmed area (screenshot mode, not for a clicked window).
     private(set) var confirmedImage: CGImage?
 
-    /// Recording shows the setting bar and waits for the record button; screenshot fires on mouse up.
-    enum Mode { case recording, screenshot }
+    /// Recording shows the setting bar and waits for the record button; screenshot fires on mouse up;
+    /// window only picks a whole window with a click (feedback sessions).
+    enum Mode { case recording, screenshot, window }
     private(set) var mode: Mode = .recording
 
     func begin(mode: Mode = .recording, onConfirm: @escaping (ScreenTarget, NSScreen) -> Void, onCancel: @escaping () -> Void) {
@@ -193,7 +194,7 @@ final class SelectionView: NSView {
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    private var aspect: AspectPreset { overlay.mode == .screenshot ? .custom : AppSettings.shared.capture.aspect }
+    private var aspect: AspectPreset { overlay.mode == .recording ? AppSettings.shared.capture.aspect : .custom }
 
     // MARK: Windows under the cursor
 
@@ -252,6 +253,7 @@ final class SelectionView: NSView {
     override func mouseDragged(with event: NSEvent) {
         let p = clamp(convert(event.locationInWindow, from: nil))
         mouse = p
+        if overlay.mode == .window { return }   // only whole windows
         didDrag = true
         switch drag {
         case .drawing(let start):
@@ -278,6 +280,14 @@ final class SelectionView: NSView {
         defer { drag = nil }
         if overlay.mode == .screenshot {
             screenshotMouseUp(event)
+            return
+        }
+        if overlay.mode == .window {
+            let p = convert(event.locationInWindow, from: nil)
+            if let hit = windowRects.first(where: { $0.rect.contains(p) }) {
+                setSelection(hit.rect, keepAspect: false)
+                overlay.confirm(windowID: hit.id)
+            }
             return
         }
         if case .drawing = drag, !didDrag || (selection?.width ?? 0) < 8 || (selection?.height ?? 0) < 8 {
@@ -497,9 +507,13 @@ final class SelectionView: NSView {
         }
 
         if selection == nil {
-            drawLabel(overlay.mode == .screenshot
-                      ? L("Screenshot: click a window or drag an area · Esc to cancel")
-                      : L("Click a window or drag to select an area · Esc to cancel"),
+            let hint: String
+            switch overlay.mode {
+            case .screenshot: hint = L("Screenshot: click a window or drag an area · Esc to cancel")
+            case .window: hint = L("Feedback session: click the window to record · Esc to cancel")
+            case .recording: hint = L("Click a window or drag to select an area · Esc to cancel")
+            }
+            drawLabel(hint,
                       at: CGPoint(x: bounds.midX, y: 60), centered: true)
         }
 

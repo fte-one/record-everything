@@ -58,6 +58,24 @@ final class AppSettings: ObservableObject {
     @Published var dictationLanguage: String {
         didSet { defaults.set(dictationLanguage, forKey: "dictationLanguage") }
     }
+    /// Feedback sessions: OpenRouter model that writes the prompt, most screenshots, text added to every prompt.
+    @Published var feedbackModel: String {
+        didSet { defaults.set(feedbackModel, forKey: "feedbackModel") }
+    }
+    static let defaultFeedbackModel = "anthropic/claude-sonnet-5.5"
+    @Published var feedbackMaxImages: Int {
+        didSet { defaults.set(feedbackMaxImages, forKey: "feedbackMaxImages") }
+    }
+    @Published var feedbackInstructions: String {
+        didSet { defaults.set(feedbackInstructions, forKey: "feedbackInstructions") }
+    }
+    /// Pressing both keys of this modifier starts and ends a feedback session (default: both ⌘).
+    @Published var feedbackTrigger: DoubleModifier {
+        didSet {
+            defaults.set(feedbackTrigger.rawValue, forKey: "feedbackTrigger")
+            DoubleModifierMonitor.shared.apply(feedbackTrigger)
+        }
+    }
     @Published var upload: UploadSettings {
         didSet { store(upload, "upload") }
     }
@@ -92,6 +110,10 @@ final class AppSettings: ObservableObject {
         dictationModel = defaults.string(forKey: "dictationModel") ?? Self.defaultDictationModel
         dictationLanguage = defaults.string(forKey: "dictationLanguage")
             ?? (Locale.preferredLanguages.first.map { Locale(identifier: $0).language.languageCode?.identifier ?? "" } ?? "")
+        feedbackModel = defaults.string(forKey: "feedbackModel") ?? Self.defaultFeedbackModel
+        feedbackMaxImages = defaults.object(forKey: "feedbackMaxImages") as? Int ?? 20
+        feedbackInstructions = defaults.string(forKey: "feedbackInstructions") ?? ""
+        feedbackTrigger = defaults.string(forKey: "feedbackTrigger").flatMap(DoubleModifier.init(rawValue:)) ?? .command
         upload = Self.load("upload") ?? UploadSettings()
         showDockIcon = defaults.object(forKey: "showDockIcon") as? Bool ?? false
         capture = Self.load("capture") ?? CaptureOptions()

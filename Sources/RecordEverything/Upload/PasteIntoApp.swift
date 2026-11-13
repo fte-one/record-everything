@@ -83,14 +83,34 @@ enum PasteIntoApp {
     @discardableResult
     static func paste(_ image: CGImage, into running: NSRunningApplication?, bundleID: String?, name: String,
                       text: String? = nil) async -> Bool {
-        Screenshots.copy(image)
+        await paste(image: image, text: text, into: running, bundleID: bundleID, name: name)
+    }
+
+    /// Pastes text only (the feedback prompt).
+    @discardableResult
+    static func pasteText(_ text: String, into running: NSRunningApplication?, bundleID: String?, name: String) async -> Bool {
+        await paste(image: nil, text: text, into: running, bundleID: bundleID, name: name)
+    }
+
+    private static func paste(image: CGImage?, text: String?, into running: NSRunningApplication?, bundleID: String?,
+                              name: String) async -> Bool {
+        let text = text?.isEmpty == false ? text : nil
+        guard image != nil || text != nil else { return false }   // never paste whatever was on the clipboard
+        if let image {
+            Screenshots.copy(image)
+        } else if let text {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        }
+        let copied = image != nil ? L("The image is on the clipboard.") : L("The text is on the clipboard.")
         guard let app = await activate(running, bundleID: bundleID) else {
-            Toast.shared.show(String(format: L("Could not open %@"), name), detail: L("The image is on the clipboard."),
+            Toast.shared.show(String(format: L("Could not open %@"), name), detail: copied,
                               symbol: "exclamationmark.triangle.fill", style: .error, duration: 4)
             return false
         }
         guard isTrusted else {
-            Toast.shared.show(L("Image copied – press ⌘V"), detail: L("Allow Accessibility access to paste automatically."),
+            Toast.shared.show(image != nil ? L("Image copied – press ⌘V") : L("Text copied – press ⌘V"),
+                              detail: L("Allow Accessibility access to paste automatically."),
                               symbol: "doc.on.clipboard.fill", style: .success, duration: 4)
             if !askedThisLaunch {
                 askedThisLaunch = true
@@ -100,7 +120,7 @@ enum PasteIntoApp {
         }
         await focusTextInput(in: app)
         pressPaste(in: app)
-        if let text, !text.isEmpty {
+        if image != nil, let text {
             // Let the app take the image before the clipboard changes under it.
             try? await Task.sleep(for: .milliseconds(450))
             NSPasteboard.general.clearContents()

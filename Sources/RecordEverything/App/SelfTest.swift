@@ -15,7 +15,7 @@ enum SelfTest {
         let output = UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "recordeverything-selftest.json"
         Task {
             var result: [String: Any] = ["mode": mode]
-            if ["upload", "files", "drop", "drophint", "screenshot", "annotate", "annotatecopy", "paste", "note", "frozen", "popover", "settings", "menubaricon", "voicemix", "preview"].contains(mode) {
+            if ["upload", "files", "drop", "drophint", "screenshot", "annotate", "annotatecopy", "paste", "note", "frozen", "feedback", "popover", "settings", "menubaricon", "voicemix", "preview"].contains(mode) {
                 await runExtra(mode, into: &result)
                 if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]) {
                     try? data.write(to: URL(fileURLWithPath: output))
@@ -462,9 +462,112 @@ enum SelfTest {
             }
             result["checks"] = checks
             result["ok"] = checks.values.allSatisfy { $0 }
+        case "feedback":
+            // Both ⌘ keys, reading the AI's plan, and a whole session on a window of RecordEverythingTestPasteApp:
+            // a click, "Mark", speech from RecordEverythingTestFeedbackAudio, transcription and prompt through the
+            // stand-in server at RecordEverythingTestOpenRouterBase; output under RecordEverythingTestFeedbackOutput.
+            var checks: [String: Bool] = [:]
+            var fired = 0
+            let monitor = DoubleModifierMonitor.shared
+            let savedHandler = monitor.handler, savedKey = monitor.key
+            monitor.handler = { fired += 1 }
+            monitor.key = .command
+            let cmd = NSEvent.ModifierFlags.command.rawValue
+            let left = NSEvent.ModifierFlags(rawValue: cmd | 0x08), both = NSEvent.ModifierFlags(rawValue: cmd | 0x18)
+            monitor.handle(left); monitor.handle(both); monitor.handle(left); monitor.handle([])          // fires
+            monitor.handle(left); try? await Task.sleep(for: .seconds(0.8)); monitor.handle(both); monitor.handle([])  // too slow
+            monitor.handle(left.union(.shift)); monitor.handle(both.union(.shift)); monitor.handle([])     // with Shift
+            checks["doubleCommand"] = fired == 1
+            // Both Shift keys instead: fires for Shift, not for ⌘ any more.
+            fired = 0
+            monitor.key = .shift
+            let shift = NSEvent.ModifierFlags.shift.rawValue
+            monitor.handle(NSEvent.ModifierFlags(rawValue: shift | 0x02)); monitor.handle(NSEvent.ModifierFlags(rawValue: shift | 0x06)); monitor.handle([])
+            monitor.handle(left); monitor.handle(both); monitor.handle([])
+            checks["doubleShift"] = fired == 1
+            monitor.key = .off
+            monitor.handle(left); monitor.handle(both); monitor.handle([])
+            checks["off"] = fired == 1
+            monitor.handler = savedHandler
+            monitor.key = savedKey
+
+            let plan = FeedbackComposer.parsePlan("Hier:\n```json\n{\"title\":\"T\",\"summary\":\"S\",\"tasks\":[{\"title\":\"A\",\"description\":\"d\",\"url\":null,\"images\":[\"K2\",3],\"quotes\":[\"q\"]}],\"questions\":[\"?\"]}\n```")
+            checks["parsePlan"] = plan?.tasks.first?.images == [2, 3] && plan?.tasks.first?.url == nil && plan?.questions == ["?"]
+
+            let d = UserDefaults.standard
+            guard let path = d.string(forKey: "RecordEverythingTestPasteApp"),
+                  let helper = try? await NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: .init()) else {
+                result["ok"] = false
+                result["error"] = "RecordEverythingTestPasteApp missing"
+                break
+            }
+            try? await Task.sleep(for: .seconds(1.5))
+            guard let window = WindowGeometry.frontWindow(of: helper.processIdentifier), let bounds = WindowGeometry.bounds(of: window) else {
+                helper.terminate()
+                result["ok"] = false
+                result["error"] = "test window not found"
+                break
+            }
+            result["trusted"] = PasteIntoApp.isTrusted
+            let session = FeedbackSession.shared
+            await session.start(windowID: window)
+            checks["started"] = session.state == .running
+            try? await Task.sleep(for: .seconds(2))
+            helper.activate()
+            try? await Task.sleep(for: .seconds(0.5))
+            // A real click into the window (needs Accessibility to post it).
+            let point = CGPoint(x: bounds.midX, y: bounds.midY + 30)
+            for type in [CGEventType.leftMouseDown, .leftMouseUp] {
+                CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: .left)?.post(tap: .cghidEventTap)
+                try? await Task.sleep(for: .milliseconds(80))
+            }
+            try? await Task.sleep(for: .seconds(1))
+            session.mark()
+            try? await Task.sleep(for: .seconds(1.5))
+            let base = d.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "x"
+            if let bar = NSApp.windows.first(where: { $0 is ChromePanel && $0.isVisible && $0.frame.height == 50 }),
+               let png = await captureOrSnapshot(bar) {
+                try? png.write(to: URL(fileURLWithPath: base + ".bar.png"))
+            }
+            let kinds = session.testSnapshot.shots.map(\.kind.rawValue)
+            result["shots"] = kinds.joined(separator: ",")
+            checks["startShot"] = kinds.contains("start")
+            checks["markShot"] = kinds.contains("mark")
+            if PasteIntoApp.isTrusted { checks["clickShot"] = kinds.contains("click") }
+            session.stop()
+            for _ in 0..<120 where session.state != .idle { try? await Task.sleep(for: .seconds(0.5)) }
+            helper.terminate()
+            guard let feedback = FeedbackReview.lastResult else {
+                checks["result"] = false
+                result["checks"] = checks
+                result["ok"] = false
+                break
+            }
+            result["folder"] = feedback.folder.path
+            result["warning"] = feedback.warning ?? ""
+            checks["markdown"] = FileManager.default.fileExists(atPath: feedback.markdownFile.path)
+            checks["images"] = !feedback.images.isEmpty && feedback.images.allSatisfy { FileManager.default.fileExists(atPath: $0.file.path) }
+            checks["imageReference"] = feedback.markdown.contains("- Bild 1: `\(feedback.images.first?.file.path ?? "-")`")
+            checks["transcript"] = feedback.markdown.contains("Der Rand fehlt hier")
+            if d.bool(forKey: "RecordEverythingTestExpectFallback") {
+                // The AI failed: the prompt is the protocol, with the screenshot nearest to what was said.
+                checks["fallbackWarning"] = feedback.warning != nil && feedback.markdown.contains("⚠️")
+                checks["fallbackProtocol"] = feedback.markdown.contains("## Protokoll") && feedback.markdown.contains("→ Bild 1")
+            } else {
+                checks["aiTasks"] = feedback.taskCount == 1 && feedback.markdown.contains("### 1. Rand ergänzen")
+                    && feedback.markdown.contains("- Bilder: Bild 1")
+                checks["noWarning"] = feedback.warning == nil
+            }
+            if let review = WindowManager.shared.window("feedback-\(feedback.folder.lastPathComponent)") {
+                try? await Task.sleep(for: .seconds(1))
+                if let png = await captureOrSnapshot(review) { try? png.write(to: URL(fileURLWithPath: base + ".review.png")) }
+            }
+            WindowManager.shared.close("feedback-\(feedback.folder.lastPathComponent)")
+            result["checks"] = checks
+            result["ok"] = checks.values.allSatisfy { $0 }
         case "note":
             // The note: ⌘V takes clipboard text (Wispr Flow's way of delivering dictation), voice commands are
-            // recognized, and a recording is transcribed (RecordEverythingTestOpenRouterURL: a stand-in server;
+            // recognized, and a recording is transcribed (RecordEverythingTestOpenRouterBase: a stand-in server;
             // RecordEverythingTestAudio: a WAV file).
             var checks: [String: Bool] = [:]
             let claude = PasteTarget(bundleID: "com.anthropic.claudefordesktop", name: "Claude", shortcut: nil)

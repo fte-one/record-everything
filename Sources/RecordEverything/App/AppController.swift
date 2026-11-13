@@ -45,6 +45,8 @@ final class AppController: NSObject {
         }
         _ = Updater.shared
         AppSettings.shared.applyActivationPolicy()
+        DoubleModifierMonitor.shared.handler = { FeedbackSession.shared.toggle() }
+        DoubleModifierMonitor.shared.apply(AppSettings.shared.feedbackTrigger)
         if !UserDefaults.standard.bool(forKey: "menuBarHintShown") {
             UserDefaults.standard.set(true, forKey: "menuBarHintShown")
             Toast.shared.show(L("Record Everything is in the menu bar"), detail: L("Click the icon for screenshots, uploads and recordings."),
@@ -56,7 +58,7 @@ final class AppController: NSObject {
 
     func showSettings(tab: SettingsTab? = nil) {
         if let tab { SettingsNavigation.shared.tab = tab }
-        WindowManager.shared.show(id: "settings", title: L("Settings"), style: .init(size: NSSize(width: 560, height: 470))) {
+        WindowManager.shared.show(id: "settings", title: L("Settings"), style: .init(size: NSSize(width: 660, height: 500))) {
             SettingsView()
         }
     }

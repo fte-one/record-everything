@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case general, upload, shortcuts, paste, dictation
+    case general, upload, shortcuts, paste, dictation, feedback
     var id: String { rawValue }
 }
 
@@ -26,10 +26,11 @@ struct SettingsView: View {
                 Text(L("Shortcuts")).tag(SettingsTab.shortcuts)
                 Text(L("Paste into")).tag(SettingsTab.paste)
                 Text(L("Dictation")).tag(SettingsTab.dictation)
+                Text(L("Feedback")).tag(SettingsTab.feedback)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 500)
+            .frame(width: 600)
             .padding(.top, 36)
             .padding(.bottom, 14)
 
@@ -40,6 +41,7 @@ struct SettingsView: View {
                 case .shortcuts: ShortcutSettings()
                 case .paste: PasteSettings()
                 case .dictation: DictationSettings()
+                case .feedback: FeedbackSettings()
                 }
             }
             .padding(.horizontal, 28)
@@ -60,7 +62,7 @@ struct SettingsView: View {
             }
             .padding(16)
         }
-        .frame(width: 560, height: 470)
+        .frame(width: 660, height: 500)
         .background(Theme.background)
         .ignoresSafeArea(edges: .top)
     }
@@ -450,6 +452,78 @@ private struct DictationSettings: View {
                 testState = .failed(error.localizedDescription)
             }
         }
+    }
+}
+
+/// Feedback sessions: how they start and how the prompt is written.
+private struct FeedbackSettings: View {
+    @ObservedObject private var settings = AppSettings.shared
+    @State private var trusted = PasteIntoApp.isTrusted
+
+    private static let suggestedModels = [
+        "anthropic/claude-sonnet-5.5", "anthropic/claude-opus-5.5", "google/gemini-3.8-flash", "google/gemini-4-carbon",
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L("Record a window while you click through it and say what should change. At the end you get a prompt for your coding agent with numbered screenshots."))
+                .font(.system(size: 12)).foregroundStyle(Theme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+                GridRow {
+                    settingsLabel(L("Start / end:"))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Picker("", selection: $settings.feedbackTrigger) {
+                            ForEach(DoubleModifier.allCases) { Text($0.title).tag($0) }
+                        }
+                        .labelsHidden()
+                        .frame(width: 220)
+                        Text(L("Press both keys at the same time, left and right."))
+                            .font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                        if settings.feedbackTrigger != .off && !trusted {
+                            Text(L("Needs Accessibility access (Settings › Paste into)."))
+                                .font(.system(size: 11)).foregroundStyle(.orange)
+                        }
+                    }
+                }
+                GridRow {
+                    settingsLabel(L("AI model:"))
+                    HStack(spacing: 6) {
+                        TextField(AppSettings.defaultFeedbackModel, text: $settings.feedbackModel).textFieldStyle(.roundedBorder)
+                        Menu {
+                            ForEach(Self.suggestedModels, id: \.self) { model in
+                                Button(model) { settings.feedbackModel = model }
+                            }
+                        } label: { Image(systemName: "chevron.down") }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                        .help(L("Suggested models"))
+                    }
+                }
+                GridRow {
+                    settingsLabel(L("Screenshots:"))
+                    Stepper(String(format: L("at most %d"), settings.feedbackMaxImages), value: $settings.feedbackMaxImages, in: 5...40)
+                }
+                GridRow(alignment: .top) {
+                    settingsLabel(L("Extra instructions:"))
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextEditor(text: $settings.feedbackInstructions)
+                            .font(.system(size: 12))
+                            .scrollContentBackground(.hidden)
+                            .padding(4)
+                            .frame(height: 74)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(Theme.tile))
+                        Text(L("Added to every prompt, e.g. “Show a plan first, then implement.”"))
+                            .font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                    }
+                }
+            }
+            Text(L("Speech is transcribed with the key, model and language from “Dictation”. Prompt and screenshots are saved under Save Location › Feedback."))
+                .font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .onAppear { trusted = PasteIntoApp.isTrusted }
     }
 }
 

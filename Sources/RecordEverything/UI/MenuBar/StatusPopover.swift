@@ -40,7 +40,11 @@ struct StatusPopoverView: View {
             .disabled(recorder.isActive)
             .opacity(recorder.isActive ? 0.45 : 1)
 
-            section("03", L("Share")) {
+            section("03", L("Feedback")) {
+                FeedbackTile { run(delay: true) { FeedbackSession.shared.isActive ? FeedbackSession.shared.stop() : FeedbackSession.shared.startPickingWindow() } }
+            }
+
+            section("04", L("Share")) {
                 ShareTile(shortcut: "⌘ + O") { run { FileSharing.choose() } }
             }
 
@@ -55,7 +59,7 @@ struct StatusPopoverView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    sectionTitle("04", L("History"))
+                    sectionTitle("05", L("History"))
                     Spacer()
                     PillTabs(selection: $listTab, items: [
                         ("uploads", L("Uploads"), history.records.count),
@@ -336,6 +340,43 @@ private struct RecordTile: View {
 }
 
 /// Quieter, dashed tile for sharing any file: it opens the file picker and teaches the drop onto the menu bar icon.
+/// Starts a feedback session (pick a window) or ends the running one.
+private struct FeedbackTile: View {
+    let action: () -> Void
+    @ObservedObject private var session = FeedbackSession.shared
+    @ObservedObject private var settings = AppSettings.shared
+    @State private var hover = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: session.isActive ? "stop.fill" : "bubble.left.and.text.bubble.right.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.record)
+                    .frame(width: 28, height: 28)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Theme.record.opacity(0.16)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(session.isActive ? L("End feedback session") : L("Vibe coding feedback session"))
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(session.isActive ? feedbackClock(session.elapsed) : L("Click through, talk – get a prompt with screenshots"))
+                        .font(.system(size: 10.5)).foregroundStyle(Theme.secondary)
+                }
+                .lineLimit(1)
+                Spacer(minLength: 4)
+                if let keys = settings.feedbackTrigger.display { KeyCaps(display: keys) }
+            }
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(RoundedRectangle(cornerRadius: 12).fill(hover ? Theme.record.opacity(0.08) : Color.white.opacity(0.03)))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(hover ? Theme.record.opacity(0.6) : Color.white.opacity(0.12)))
+            .animation(.easeOut(duration: 0.15), value: hover)
+            .contentShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+    }
+}
+
 private struct ShareTile: View {
     let shortcut: String
     let action: () -> Void
