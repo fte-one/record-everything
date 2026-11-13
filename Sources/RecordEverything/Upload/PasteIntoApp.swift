@@ -78,9 +78,11 @@ enum PasteIntoApp {
     }
 
     /// Pastes into a running app (the one in front before the screenshot) or the app with this bundle ID
-    /// (launched if needed). The image stays on the clipboard either way.
+    /// (launched if needed). `text` (the editor's note) follows the image in the same input field; then the
+    /// text is what stays on the clipboard, otherwise the image.
     @discardableResult
-    static func paste(_ image: CGImage, into running: NSRunningApplication?, bundleID: String?, name: String) async -> Bool {
+    static func paste(_ image: CGImage, into running: NSRunningApplication?, bundleID: String?, name: String,
+                      text: String? = nil) async -> Bool {
         Screenshots.copy(image)
         guard let app = await activate(running, bundleID: bundleID) else {
             Toast.shared.show(String(format: L("Could not open %@"), name), detail: L("The image is on the clipboard."),
@@ -97,8 +99,19 @@ enum PasteIntoApp {
             return false
         }
         await focusTextInput(in: app)
-        if !pressPasteMenuItem(of: app) { postCommandV() }
+        pressPaste(in: app)
+        if let text, !text.isEmpty {
+            // Let the app take the image before the clipboard changes under it.
+            try? await Task.sleep(for: .milliseconds(450))
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            pressPaste(in: app)
+        }
         return true
+    }
+
+    private static func pressPaste(in app: NSRunningApplication) {
+        if !pressPasteMenuItem(of: app) { postCommandV() }
     }
 
     // MARK: Focusing the input field

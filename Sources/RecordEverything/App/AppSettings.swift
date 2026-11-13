@@ -49,6 +49,15 @@ final class AppSettings: ObservableObject {
     @Published var annotationTool: String {
         didSet { defaults.set(annotationTool, forKey: "annotationTool") }
     }
+    /// OpenRouter transcription model for dictating a note in the screenshot editor.
+    @Published var dictationModel: String {
+        didSet { defaults.set(dictationModel, forKey: "dictationModel") }
+    }
+    static let defaultDictationModel = "openai/gpt-transcribe"
+    /// ISO 639-1 code of the spoken language; empty means detect automatically.
+    @Published var dictationLanguage: String {
+        didSet { defaults.set(dictationLanguage, forKey: "dictationLanguage") }
+    }
     @Published var upload: UploadSettings {
         didSet { store(upload, "upload") }
     }
@@ -80,6 +89,9 @@ final class AppSettings: ObservableObject {
         pasteBackShortcut = Self.loadHotKey("pasteBackShortcut", default: .defaultPasteBack)
         pasteTargets = Self.load("pasteTargets") ?? PasteTarget.installedDefaults()
         annotationTool = defaults.string(forKey: "annotationTool") ?? AnnotationTool.arrow.rawValue
+        dictationModel = defaults.string(forKey: "dictationModel") ?? Self.defaultDictationModel
+        dictationLanguage = defaults.string(forKey: "dictationLanguage")
+            ?? (Locale.preferredLanguages.first.map { Locale(identifier: $0).language.languageCode?.identifier ?? "" } ?? "")
         upload = Self.load("upload") ?? UploadSettings()
         showDockIcon = defaults.object(forKey: "showDockIcon") as? Bool ?? false
         capture = Self.load("capture") ?? CaptureOptions()

@@ -1,7 +1,7 @@
 import Foundation
 import Security
 
-/// Stores the upload credentials as generic passwords in the login keychain.
+/// Stores the upload credentials and the OpenRouter key as generic passwords in the login keychain.
 enum Keychain {
     private static let service = "com.otark.recordeverything.upload"
 
@@ -29,7 +29,7 @@ enum Keychain {
         guard let value, !value.isEmpty else { return }
         var add = base
         add[kSecValueData as String] = Data(value.utf8)
-        add[kSecAttrLabel as String] = "Record Everything upload (\(account))"
+        add[kSecAttrLabel as String] = "Record Everything (\(account))"
         SecItemAdd(add as CFDictionary, nil)
     }
 }

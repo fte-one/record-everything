@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case general, upload, shortcuts, paste
+    case general, upload, shortcuts, paste, dictation
     var id: String { rawValue }
 }
 
@@ -25,10 +25,11 @@ struct SettingsView: View {
                 Text(L("Upload")).tag(SettingsTab.upload)
                 Text(L("Shortcuts")).tag(SettingsTab.shortcuts)
                 Text(L("Paste into")).tag(SettingsTab.paste)
+                Text(L("Dictation")).tag(SettingsTab.dictation)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 440)
+            .frame(width: 500)
             .padding(.top, 36)
             .padding(.bottom, 14)
 
@@ -38,6 +39,7 @@ struct SettingsView: View {
                 case .upload: UploadSettingsView()
                 case .shortcuts: ShortcutSettings()
                 case .paste: PasteSettings()
+                case .dictation: DictationSettings()
                 }
             }
             .padding(.horizontal, 28)
@@ -358,6 +360,96 @@ private struct PasteSettings: View {
               !settings.pasteTargets.contains(where: { $0.bundleID == bundleID }) else { return }
         let name = FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
         settings.pasteTargets.append(PasteTarget(bundleID: bundleID, name: name, shortcut: nil))
+    }
+}
+
+/// Screenshot editor: dictating a note (Control held) through OpenRouter's speech-to-text.
+private struct DictationSettings: View {
+    @ObservedObject private var settings = AppSettings.shared
+    @State private var key = ""
+    @State private var testState: TestState = .idle
+
+    enum TestState: Equatable { case idle, running, ok, failed(String) }
+
+    private static let suggestedModels = [
+        "openai/gpt-transcribe", "elevenlabs/scribe-v2", "google/gemini-3.5-transcribe",
+        "mistralai/voxtral-small-transcribe-3-0", "openai/whisper-large-v3-turbo",
+    ]
+    private static let languages: [(code: String, name: String)] = [
+        ("", L("Detect automatically")), ("de", "Deutsch"), ("en", "English"), ("fr", "Français"), ("es", "Español"), ("it", "Italiano"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(L("In the screenshot editor, hold Control and speak. The text becomes a note that is pasted into the app after the image. Wispr Flow works too: dictate as usual and its text lands in the note."))
+                .font(.system(size: 12)).foregroundStyle(Theme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+                GridRow {
+                    settingsLabel(L("OpenRouter key:"))
+                    SecureField("sk-or-…", text: $key).textFieldStyle(.roundedBorder)
+                        .onSubmit { OpenRouter.apiKey = key }
+                }
+                GridRow {
+                    settingsLabel(L("Model:"))
+                    HStack(spacing: 6) {
+                        TextField(AppSettings.defaultDictationModel, text: $settings.dictationModel).textFieldStyle(.roundedBorder)
+                        Menu {
+                            ForEach(Self.suggestedModels, id: \.self) { model in
+                                Button(model) { settings.dictationModel = model }
+                            }
+                        } label: { Image(systemName: "chevron.down") }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                        .help(L("Suggested models"))
+                    }
+                }
+                GridRow {
+                    settingsLabel(L("Language:"))
+                    Picker("", selection: $settings.dictationLanguage) {
+                        ForEach(Self.languages, id: \.code) { Text($0.name).tag($0.code) }
+                    }
+                    .labelsHidden()
+                    .frame(width: 220)
+                }
+            }
+            HStack(spacing: 10) {
+                Button(L("Save & check key")) { saveAndTest() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(testState == .running || key.isEmpty)
+                switch testState {
+                case .idle: EmptyView()
+                case .running: ProgressView().controlSize(.small)
+                case .ok:
+                    Label(L("Key works"), systemImage: "checkmark.circle.fill").foregroundStyle(Theme.accent).font(.system(size: 12))
+                case .failed(let text):
+                    Label(text, systemImage: "xmark.octagon.fill").foregroundStyle(Theme.record).font(.system(size: 12)).lineLimit(2)
+                }
+            }
+            Text(L("Say “paste into Claude” at the end (or the name of another app under “Paste into”) to paste right away."))
+                .font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 4) {
+                Text(L("The key is stored in your keychain.")).font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                Link(L("Get a key"), destination: URL(string: "https://openrouter.ai/keys")!).font(.system(size: 11))
+            }
+        }
+        .onAppear { key = OpenRouter.apiKey ?? "" }
+        .onDisappear { OpenRouter.apiKey = key }
+    }
+
+    private func saveAndTest() {
+        OpenRouter.apiKey = key
+        testState = .running
+        Task {
+            do {
+                try await OpenRouter.checkKey()
+                testState = .ok
+            } catch {
+                testState = .failed(error.localizedDescription)
+            }
+        }
     }
 }
 

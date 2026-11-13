@@ -5,29 +5,39 @@ import SwiftUI
 /// Opens screenshots for annotation; "Upload", "Copy" and "Paste" close the window.
 @MainActor
 enum AnnotationEditor {
+    /// The note of the editor opened last (self-test).
+    private(set) static weak var currentNote: EditorNote?
+
     /// `origin`: the app in front before the screenshot; ⌘X pastes the image there.
     static func open(image: CGImage, origin: NSRunningApplication? = nil) {
         let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main!
         let scale = screen.backingScaleFactor
         let model = AnnotationModel(image: image, scale: scale)
         model.tool = AnnotationTool(rawValue: AppSettings.shared.annotationTool) ?? .arrow
+        let note = EditorNote()
+        note.origin = origin
+        currentNote = note
         let id = "annotate-\(UUID().uuidString)"
         let points = CGSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
-        let maxSize = CGSize(width: screen.visibleFrame.width * 0.85, height: screen.visibleFrame.height * 0.85 - 70)
+        let maxSize = CGSize(width: screen.visibleFrame.width * 0.85, height: screen.visibleFrame.height * 0.85 - 120)
         let fit = min(1, maxSize.width / points.width, maxSize.height / points.height)
         // Wide enough for the whole toolbar including the labelled Copy, Paste and Upload buttons.
         let targets = AnnotationEditorView.extraTargets(origin: origin).count
         let minWidth = 960 + (origin == nil ? 0 : 130) + CGFloat(targets) * 34
-        let size = NSSize(width: max(minWidth, points.width * fit + 32), height: max(460, points.height * fit + 32 + 64))
+        let size = NSSize(width: max(minWidth, points.width * fit + 32), height: max(510, points.height * fit + 32 + 64 + 50))
         WindowManager.shared.show(id: id, title: L("Edit screenshot"),
-                                  style: .init(size: size, minSize: NSSize(width: minWidth, height: 460), resizable: true)) {
-            AnnotationEditorView(model: model, origin: origin) { WindowManager.shared.close(id) }
+                                  style: .init(size: size, minSize: NSSize(width: minWidth, height: 510), resizable: true)) {
+            AnnotationEditorView(model: model, note: note, origin: origin) {
+                note.cancel()
+                WindowManager.shared.close(id)
+            }
         }
     }
 }
 
 struct AnnotationEditorView: View {
     @ObservedObject var model: AnnotationModel
+    @ObservedObject var note: EditorNote
     let origin: NSRunningApplication?
     let close: () -> Void
     @ObservedObject private var settings = AppSettings.shared
@@ -47,11 +57,16 @@ struct AnnotationEditorView: View {
                 .padding(.top, 30)
                 .padding(.bottom, 8)
                 .background(Theme.panel)
-            AnnotationCanvas(model: model, onShortcut: handleShortcut)
+            AnnotationCanvas(model: model, note: note, onShortcut: handleShortcut)
                 .background(Color.black.opacity(0.35))
+            noteBar
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Theme.panel)
         }
         .background(Theme.background)
         .ignoresSafeArea(edges: .top)
+        .onAppear { note.onCommand = { pasteByVoice($0) } }
         .onChange(of: model.tool) { _, tool in
             if Self.rememberedTools.contains(tool) { settings.annotationTool = tool.rawValue }
         }
@@ -155,16 +170,81 @@ struct AnnotationEditorView: View {
         }
     }
 
+    /// The note under the image: typed, dictated with Control held, or pasted (Wispr Flow pastes with ⌘V).
+    /// Pasting into an app puts it into the input field after the image.
+    private var noteBar: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Group {
+                switch note.state {
+                case .listening:
+                    HStack(spacing: 6) {
+                        Circle().fill(Theme.record).frame(width: 9, height: 9)
+                        Capsule().fill(Color.white.opacity(0.15)).frame(width: 46, height: 5)
+                            .overlay(alignment: .leading) {
+                                Capsule().fill(Theme.record).frame(width: 46 * CGFloat(note.level), height: 5)
+                            }
+                    }
+                case .transcribing:
+                    ProgressView().controlSize(.small)
+                default:
+                    Image(systemName: "mic").foregroundStyle(Theme.secondary)
+                }
+            }
+            .frame(minWidth: 18, alignment: .leading)
+            .help(L("Hold Control and speak"))
+
+            TextField(placeholder, text: $note.text, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .lineLimit(1...4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if case .failed(let message) = note.state {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11)).foregroundStyle(Theme.record)
+                    .lineLimit(2)
+                    .frame(maxWidth: 320, alignment: .trailing)
+                    .onTapGesture { note.dismissError() }
+                if OpenRouter.apiKey == nil {
+                    Button(L("Settings…")) {
+                        AppController.shared.showSettings(tab: .dictation)
+                    }
+                    .controlSize(.small)
+                }
+            }
+            if !note.isEmpty {
+                Button { note.text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.secondary) }
+                    .buttonStyle(.plain)
+                    .help(L("Clear note"))
+            }
+        }
+        .frame(minHeight: 30)
+    }
+
+    private var placeholder: String {
+        switch note.state {
+        case .listening: return L("Listening … release Control to finish")
+        case .transcribing: return L("Transcribing …")
+        default: return L("Note for the image: hold Control and speak, dictate with Wispr Flow or type")
+        }
+    }
+
     private func shortcutHint(_ combo: HotKeyCombo?) -> String {
         combo.map { " (\($0.display.replacingOccurrences(of: " + ", with: "")))" } ?? ""
     }
 
-    /// Editor shortcuts, called by the canvas unless text is being typed. ⌘C copies; ⌘X (or the set
-    /// shortcut) pastes into the app the screenshot came from, and without one copies like ⌘C.
-    private func handleShortcut(_ event: NSEvent) -> Bool {
+    /// Editor shortcuts, called by the canvas. ⌘C copies; ⌘X (or the set shortcut) pastes into the app the
+    /// screenshot came from, and without one copies like ⌘C; ⌘V takes text from the clipboard into the note.
+    /// `inNote`: the cursor sits in the note without a selection – then only the paste shortcuts apply.
+    private func handleShortcut(_ event: NSEvent, inNote: Bool) -> Bool {
         let mods = event.modifierFlags.intersection([.command, .shift, .option, .control])
         let ch = event.charactersIgnoringModifiers?.lowercased()
-        if ch == "c" && (mods == .command || mods == [.command, .shift]) {
+        if ch == "v" && mods == .command && !inNote {
+            guard let text = NSPasteboard.general.string(forType: .string) else { return false }
+            note.append(text)
+            return true
+        }
+        if ch == "c" && (mods == .command || mods == [.command, .shift]) && !inNote {
             copyAndClose()
             return true
         }
@@ -189,8 +269,19 @@ struct AnnotationEditorView: View {
 
     private func paste(into app: NSRunningApplication?, bundleID: String?, name: String) {
         guard let image = model.render() else { return }
+        let text = note.isEmpty ? nil : note.text.trimmingCharacters(in: .whitespacesAndNewlines)
         close()
-        Task { await PasteIntoApp.paste(image, into: app, bundleID: bundleID, name: name) }
+        Task { await PasteIntoApp.paste(image, into: app, bundleID: bundleID, name: name, text: text) }
+    }
+
+    /// "… in Claude einfügen" at the end of the note.
+    private func pasteByVoice(_ target: VoiceCommand.Target) {
+        switch target {
+        case .origin:
+            if let origin { paste(into: origin, bundleID: origin.bundleIdentifier, name: PasteIntoApp.displayName(of: origin)) }
+        case .fixed(let target):
+            paste(into: nil, bundleID: target.bundleID, name: target.name)
+        }
     }
 
     private func copyAndClose() {
@@ -219,10 +310,11 @@ struct AnnotationEditorView: View {
 /// Hosts the AppKit drawing surface.
 private struct AnnotationCanvas: NSViewRepresentable {
     @ObservedObject var model: AnnotationModel
-    let onShortcut: (NSEvent) -> Bool
+    let note: EditorNote
+    let onShortcut: (NSEvent, Bool) -> Bool
 
     func makeNSView(context: Context) -> CanvasView {
-        let view = CanvasView(model: model)
+        let view = CanvasView(model: model, note: note)
         view.onShortcut = onShortcut
         return view
     }
@@ -243,11 +335,17 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     private var textField: NSTextField?
     private var textOrigin: CGPoint?
     private var keyMonitor: Any?
-    /// Editor shortcuts (⌘C, ⌘X, paste targets); returns true when it handled the event.
-    var onShortcut: ((NSEvent) -> Bool)?
+    private var flagsMonitor: Any?
+    private let note: EditorNote
+    /// Control is held on its own: dictating into the note.
+    private var controlHeld = false
+    /// Editor shortcuts (⌘C, ⌘X, ⌘V, paste targets); returns true when it handled the event. The flag says
+    /// the cursor sits in the note field without a selection.
+    var onShortcut: ((NSEvent, Bool) -> Bool)?
 
-    init(model: AnnotationModel) {
+    init(model: AnnotationModel, note: EditorNote) {
         self.model = model
+        self.note = note
         super.init(frame: .zero)
         model.objectWillChange.sink { [weak self] in DispatchQueue.main.async { self?.needsDisplay = true } }.store(in: &cancellables)
     }
@@ -264,8 +362,27 @@ final class CanvasView: NSView, NSTextFieldDelegate {
         // A local monitor catches the editor shortcuts wherever focus sits in this window (toolbar
         // buttons included), before the Edit menu turns ⌘C / ⌘X into copy:/cut: for the responder chain.
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, event.window === self.window, self.handleShortcut(event) else { return event }
-            return nil
+            guard let self, event.window === self.window else { return event }
+            if self.controlHeld { // Control plus a key is a shortcut, not dictation
+                self.controlHeld = false
+                MainActor.assumeIsolated { self.note.stopListening(discard: true) }
+            }
+            return self.handleShortcut(event) ? nil : event
+        }
+        // Holding Control on its own dictates a note; Fn (Wispr Flow) or another modifier with it does not.
+        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            guard let self, event.window === self.window else { return event }
+            let mods = event.modifierFlags.intersection([.command, .option, .control, .shift, .function])
+            MainActor.assumeIsolated {
+                if mods == .control, !self.controlHeld, self.textField == nil {
+                    self.controlHeld = true
+                    self.note.startListening()
+                } else if self.controlHeld, mods != .control {
+                    self.controlHeld = false
+                    self.note.stopListening(discard: !mods.isEmpty)
+                }
+            }
+            return event
         }
     }
 
@@ -276,16 +393,24 @@ final class CanvasView: NSView, NSTextFieldDelegate {
 
     private func removeKeyMonitor() {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }
         keyMonitor = nil
+        flagsMonitor = nil
     }
 
-    /// Only while no text is being typed; in a text field ⌘C / ⌘X keep copying and cutting text.
-    /// Handled here rather than as SwiftUI shortcuts, which would also catch ⌘C inside the text field.
+    /// Not while a text label is being typed on the image. In the note field the paste shortcuts work while
+    /// nothing is selected; with a selection ⌘C / ⌘X copy and cut text as usual, and ⌘V always pastes text.
+    /// Handled here rather than as SwiftUI shortcuts, which would also catch ⌘C inside a text field.
     private func handleShortcut(_ event: NSEvent) -> Bool {
         let responder = window?.firstResponder
-        guard !event.modifierFlags.intersection([.command, .option, .control]).isEmpty, textField == nil,
-              !(responder is NSText || responder is NSTextField), let onShortcut else { return false }
-        return onShortcut(event)
+        guard !event.modifierFlags.intersection([.command, .option, .control]).isEmpty, textField == nil, let onShortcut else {
+            return false
+        }
+        if responder is NSText || responder is NSTextField {
+            guard let editor = responder as? NSTextView, editor.selectedRange().length == 0 else { return false }
+            return onShortcut(event, true)
+        }
+        return onShortcut(event, false)
     }
 
     // MARK: Geometry

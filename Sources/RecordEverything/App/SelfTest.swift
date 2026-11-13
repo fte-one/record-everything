@@ -15,7 +15,7 @@ enum SelfTest {
         let output = UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "recordeverything-selftest.json"
         Task {
             var result: [String: Any] = ["mode": mode]
-            if ["upload", "files", "drop", "drophint", "screenshot", "annotate", "annotatecopy", "paste", "popover", "settings", "menubaricon", "voicemix", "preview"].contains(mode) {
+            if ["upload", "files", "drop", "drophint", "screenshot", "annotate", "annotatecopy", "paste", "note", "popover", "settings", "menubaricon", "voicemix", "preview"].contains(mode) {
                 await runExtra(mode, into: &result)
                 if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]) {
                     try? data.write(to: URL(fileURLWithPath: output))
@@ -402,8 +402,10 @@ enum SelfTest {
                 window.makeKeyAndOrderFront(nil)
                 // Typing text: the shortcut must leave the editor open.
                 let field = NSTextField(frame: CGRect(x: 10, y: 10, width: 100, height: 22))
+                field.stringValue = "text"
                 window.contentView?.addSubview(field)
                 window.makeFirstResponder(field)
+                field.currentEditor()?.selectAll(nil) // with a selection, ⌘C / ⌘X act on the text
                 let before = NSPasteboard.general.changeCount
                 await press(key, code: code, in: window)
                 checks["\(key)-textFieldKeepsEditorOpen"] = editorWindow() != nil
@@ -415,6 +417,60 @@ enum SelfTest {
                 checks["\(key)-copiedImage"] = NSPasteboard.general.data(forType: .png) != nil
                 result["\(key)-types"] = NSPasteboard.general.types?.map(\.rawValue).joined(separator: ",") ?? "-"
                 if let w = editorWindow() { w.close() }
+            }
+            result["checks"] = checks
+            result["ok"] = !checks.isEmpty && checks.values.allSatisfy { $0 }
+            NSPasteboard.general.clearContents()
+            if let saved { NSPasteboard.general.setString(saved, forType: .string) }
+        case "note":
+            // The note: ⌘V takes clipboard text (Wispr Flow's way of delivering dictation), voice commands are
+            // recognized, and a recording is transcribed (RecordEverythingTestOpenRouterURL: a stand-in server;
+            // RecordEverythingTestAudio: a WAV file).
+            var checks: [String: Bool] = [:]
+            let claude = PasteTarget(bundleID: "com.anthropic.claudefordesktop", name: "Claude", shortcut: nil)
+            let codex = PasteTarget(bundleID: "com.openai.codex", name: "Codex", shortcut: nil)
+            let t3 = PasteTarget(bundleID: "com.t3tools.t3code", name: "T3 Code", shortcut: nil)
+            let cases: [(String, VoiceCommand.Target?, String)] = [
+                ("Bitte den Button nach rechts schieben, in Claude einfügen.", .fixed(claude), "Bitte den Button nach rechts schieben"),
+                ("Mach das breiter und in Cloud einfügen", .fixed(claude), "Mach das breiter"),
+                ("Fehler hier. In T3 Code einfügen!", .fixed(t3), "Fehler hier."),
+                ("Fix the spacing, paste into Codex", .fixed(codex), "Fix the spacing"),
+                ("Das Feld zum Einfügen ist zu klein", nil, ""),
+                ("Kopieren und einfügen geht nicht", nil, ""),
+                ("in Claude einfügen", .fixed(claude), ""),
+            ]
+            for (i, (text, target, remainder)) in cases.enumerated() {
+                let match = VoiceCommand.parse(text, origin: nil, targets: [claude, codex, t3])
+                let ok = match?.target == target && (target == nil || match?.remainder == remainder)
+                checks["command-\(i)"] = ok
+                if !ok { result["command-\(i)"] = "\(match.map { "\($0.target) | \($0.remainder)" } ?? "nil")" }
+            }
+
+            let saved = NSPasteboard.general.string(forType: .string)
+            AnnotationEditor.open(image: image)
+            try? await Task.sleep(for: .seconds(1))
+            if let window = editorWindow(), let note = AnnotationEditor.currentNote {
+                window.makeKeyAndOrderFront(nil)
+                window.makeFirstResponder(window.contentView?.descendant(of: CanvasView.self))
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString("Das hier ist zu eng", forType: .string)
+                await press("v", code: 9, in: window)
+                checks["cmdV-addsToNote"] = note.text == "Das hier ist zu eng"
+                checks["cmdV-keepsEditorOpen"] = editorWindow() != nil
+                NSPasteboard.general.setString("und der Rand fehlt", forType: .string)
+                await press("v", code: 9, in: window)
+                checks["cmdV-appends"] = note.text == "Das hier ist zu eng und der Rand fehlt"
+                result["note"] = note.text
+                if let audio = UserDefaults.standard.string(forKey: "RecordEverythingTestAudio") {
+                    note.text = ""
+                    await note.transcribeForTest(URL(fileURLWithPath: audio))
+                    checks["transcribed"] = !note.isEmpty
+                    result["transcript"] = note.text
+                    if case .failed(let message) = note.state { result["transcribeError"] = message }
+                }
+                window.close()
+            } else {
+                checks["opened"] = false
             }
             result["checks"] = checks
             result["ok"] = !checks.isEmpty && checks.values.allSatisfy { $0 }
@@ -449,16 +505,22 @@ enum SelfTest {
                 try? FileManager.default.removeItem(atPath: log)
                 NSApp.activate()
                 AnnotationEditor.open(image: image, origin: origin)
+                AnnotationEditor.currentNote?.text = "Notiz \(name)" // follows the image into the field
                 try? await Task.sleep(for: .seconds(1))
                 guard let window = editorWindow() else { checks["\(name)-opened"] = false; continue }
                 window.makeKeyAndOrderFront(nil)
                 await press(key, code: code, in: window)
                 try? await Task.sleep(for: .seconds(1.5))
                 checks["\(name)-closesEditor"] = editorWindow() == nil
-                checks["\(name)-copiedImage"] = NSPasteboard.general.data(forType: .png) != nil
+                // With a note the text stays on the clipboard (it was pasted last), otherwise the image.
+                checks["\(name)-copied"] = NSPasteboard.general.data(forType: .png) != nil
+                    || NSPasteboard.general.string(forType: .string) == "Notiz \(name)"
                 checks["\(name)-targetInFront"] = NSWorkspace.shared.frontmostApplication?.processIdentifier == target.processIdentifier
                 if PasteIntoApp.isTrusted {
-                    checks["\(name)-pasted"] = FileManager.default.fileExists(atPath: log)
+                    try? await Task.sleep(for: .seconds(0.6)) // the note follows the image
+                    let logged = (try? String(contentsOfFile: log, encoding: .utf8)) ?? ""
+                    checks["\(name)-pasted"] = logged.contains("public.png")
+                    checks["\(name)-notePasted"] = logged.contains("Notiz \(name)")
                     result["\(name)-log"] = try? String(contentsOfFile: log, encoding: .utf8)
                 }
                 editorWindow()?.close()

@@ -234,3 +234,27 @@
 "Automatic pasting is allowed" = "Automatisches Einfügen ist erlaubt";
 "Needs Accessibility access to press ⌘V. Without it, the image is copied and the app comes to the front." = "Zum Drücken von ⌘V braucht Record Everything Zugriff auf die Bedienungshilfen. Ohne ihn wird das Bild kopiert und die App nach vorne geholt.";
 "Allow…" = "Erlauben …";
+
+/* Note and dictation in the screenshot editor */
+"Note for the image: hold Control and speak, dictate with Wispr Flow or type" = "Notiz zum Bild: Control halten und sprechen, mit Wispr Flow diktieren oder tippen";
+"Listening … release Control to finish" = "Ich höre zu … Control loslassen, wenn du fertig bist";
+"Transcribing …" = "Wird in Text umgewandelt …";
+"Hold Control and speak" = "Control halten und sprechen";
+"Clear note" = "Notiz löschen";
+"Add an OpenRouter key under Settings › Dictation." = "Trag unter Einstellungen › Diktieren einen OpenRouter-Schlüssel ein.";
+"Microphone access is off (System Settings › Privacy & Security › Microphone)." = "Kein Zugriff aufs Mikrofon (Systemeinstellungen › Datenschutz & Sicherheit › Mikrofon).";
+"The microphone could not be started." = "Das Mikrofon ließ sich nicht starten.";
+"Transcription failed (%d): %@" = "Umwandeln in Text fehlgeschlagen (%d): %@";
+"Transcription failed: no text in the answer." = "Umwandeln in Text fehlgeschlagen: Die Antwort enthielt keinen Text.";
+"Dictation" = "Diktieren";
+"In the screenshot editor, hold Control and speak. The text becomes a note that is pasted into the app after the image. Wispr Flow works too: dictate as usual and its text lands in the note." = "Im Screenshot-Editor Control halten und sprechen. Der Text wird zur Notiz, die beim Einfügen nach dem Bild in der App landet. Wispr Flow geht auch: wie gewohnt diktieren, der Text landet in der Notiz.";
+"OpenRouter key:" = "OpenRouter-Schlüssel:";
+"Model:" = "Modell:";
+"Language:" = "Sprache:";
+"Detect automatically" = "Automatisch erkennen";
+"Suggested models" = "Vorgeschlagene Modelle";
+"Save & check key" = "Sichern & Schlüssel prüfen";
+"Key works" = "Schlüssel funktioniert";
+"Say “paste into Claude” at the end (or the name of another app under “Paste into”) to paste right away." = "Sag am Ende „in Claude einfügen“ (oder den Namen einer anderen App unter „Einfügen in“), dann wird sofort eingefügt.";
+"The key is stored in your keychain." = "Der Schlüssel liegt im Schlüsselbund.";
+"Get a key" = "Schlüssel holen";

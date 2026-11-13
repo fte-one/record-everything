@@ -20,6 +20,12 @@ Mikrofon mitschneiden, Aufnahmen in einer Bibliothek verwalten, abspielen und sc
   installiert); sie erscheinen im Editor als App-Symbole. Für das automatische ⌘V braucht die App den
   Zugriff auf die Bedienungshilfen, ohne ihn landet das Bild in der Zwischenablage und die App kommt nach
   vorne. Beim Tippen eines Textes im Editor kopieren ⌘C und ⌘X wie gewohnt den Text.
+- **Notiz diktieren**: Unter dem Bild steht eine Notizzeile. Control gedrückt halten und sprechen: Die
+  Aufnahme geht an die Spracherkennung von OpenRouter (Schlüssel, Modell und Sprache unter Einstellungen ›
+  „Diktieren“, ab Werk `openai/gpt-transcribe`). Wispr Flow geht ebenso: Es fügt seinen Text mit ⌘V ein,
+  und der Editor übernimmt Text aus der Zwischenablage in die Notiz. Beim Einfügen in eine App folgt die
+  Notiz dem Bild ins Eingabefeld. Endet die Notiz mit „in Claude einfügen“ (oder „paste into Codex“, mit
+  dem Namen eines Ziels), wird sofort eingefügt.
 - **Screenshot & Link kopieren** (⌘↑): Das Bild landet auf Cloudflare R2, der Link ist sofort in der
   Zwischenablage.
 - **Screenshot & Bild kopieren** (⌘↓): Das Bild liegt sofort in der Zwischenablage.
@@ -171,6 +177,8 @@ open "build/Record Everything.app" --args -RecordEverythingSelfTest screen -Reco
 ```
 
 Modi: `screen`, `region`, `pause`, `audio`, `screenshot`, `upload`, `files`, `drop`, `drophint`, `annotate`,
+`annotatecopy`, `paste`, `note` (⌘V in die Notiz, Sprachbefehle; mit `-RecordEverythingTestAudio <WAV>` und
+`-RecordEverythingTestOpenRouterURL` auch die Transkription gegen einen Ersatz-Server),
 `popover`, `preview`,
 `settings`, `voicemix` (Ton einer vorhandenen Datei rendern: `-RecordEverythingSelfTestInput <Datei>`,
 `-RecordEverythingSelfTestTracks system,microphone`; schreibt eine Kopie);
