@@ -12,6 +12,11 @@ final class SelectionOverlay {
     private var onCancel: (() -> Void)?
     private(set) var isActive = false
     let bar = SelectionBarModel()
+    /// Screenshot mode: each display as it looked when the shortcut was pressed, before the overlay took focus
+    /// and closed open menus, tooltips and hover states. Areas are cut from these frozen images.
+    private var frozen: [CGDirectDisplayID: CGImage] = [:]
+    /// The frozen image of the confirmed area (screenshot mode, not for a clicked window).
+    private(set) var confirmedImage: CGImage?
 
     /// Recording shows the setting bar and waits for the record button; screenshot fires on mouse up.
     enum Mode { case recording, screenshot }
@@ -23,8 +28,10 @@ final class SelectionOverlay {
         self.mode = mode
         self.onConfirm = onConfirm
         self.onCancel = onCancel
+        confirmedImage = nil
         Task {
             let images = await Self.captureScreens()
+            frozen = mode == .screenshot ? images : [:]
             for screen in NSScreen.screens {
                 let window = OverlayWindow(screen: screen)
                 let view = SelectionView(screen: screen, overlay: self, image: images[screen.displayID])
@@ -58,9 +65,22 @@ final class SelectionOverlay {
         let screen = view.screen
         let target = ScreenTarget(displayID: screen.displayID, rect: rect.integral, backingScale: screen.backingScaleFactor,
                                   windowID: windowID)
+        if windowID == nil, let image = frozen[screen.displayID] {
+            let scale = CGFloat(image.width) / screen.frame.width
+            let pixels = CGRect(x: target.rect.minX * scale, y: target.rect.minY * scale,
+                                width: target.rect.width * scale, height: target.rect.height * scale).integral
+            confirmedImage = image.cropping(to: pixels)
+        }
         let cb = onConfirm
         close()
         cb?(target, screen)
+    }
+
+    /// Self-test: selects `rect` (top-left points on that display) and confirms it.
+    func selectForTest(_ rect: CGRect, displayID: CGDirectDisplayID) {
+        guard let view = windows.first(where: { $0.targetScreen.displayID == displayID })?.contentView as? SelectionView else { return }
+        view.setSelection(rect, keepAspect: false)
+        confirm()
     }
 
     func cancel() {
@@ -72,6 +92,7 @@ final class SelectionOverlay {
     private func close() {
         for w in windows { w.orderOut(nil) }
         windows.removeAll()
+        frozen = [:]
         isActive = false
         onConfirm = nil
         onCancel = nil
@@ -91,6 +112,7 @@ final class SelectionOverlay {
             config.width = Int(CGFloat(display.width) * scale)
             config.height = Int(CGFloat(display.height) * scale)
             config.showsCursor = false
+            config.captureResolution = .best
             if let image = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) {
                 result[display.displayID] = image
             }
@@ -444,6 +466,16 @@ final class SelectionView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let ctx = NSGraphicsContext.current!.cgContext
+        // Screenshot mode shows the frozen screen, so the menu or tooltip that the live screen just lost stays
+        // visible while selecting – and is what gets captured.
+        if overlay.mode == .screenshot, let image {
+            ctx.saveGState()
+            ctx.interpolationQuality = .high
+            ctx.translateBy(x: 0, y: bounds.height)
+            ctx.scaleBy(x: 1, y: -1)
+            ctx.draw(image, in: bounds)
+            ctx.restoreGState()
+        }
         let hole = selection ?? hoveredWindow?.rect
 
         let dim = CGMutablePath()

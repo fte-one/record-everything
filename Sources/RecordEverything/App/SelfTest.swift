@@ -15,7 +15,7 @@ enum SelfTest {
         let output = UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "recordeverything-selftest.json"
         Task {
             var result: [String: Any] = ["mode": mode]
-            if ["upload", "files", "drop", "drophint", "screenshot", "annotate", "annotatecopy", "paste", "note", "popover", "settings", "menubaricon", "voicemix", "preview"].contains(mode) {
+            if ["upload", "files", "drop", "drophint", "screenshot", "annotate", "annotatecopy", "paste", "note", "frozen", "popover", "settings", "menubaricon", "voicemix", "preview"].contains(mode) {
                 await runExtra(mode, into: &result)
                 if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]) {
                     try? data.write(to: URL(fileURLWithPath: output))
@@ -422,6 +422,46 @@ enum SelfTest {
             result["ok"] = !checks.isEmpty && checks.values.allSatisfy { $0 }
             NSPasteboard.general.clearContents()
             if let saved { NSPasteboard.general.setString(saved, forType: .string) }
+        case "frozen":
+            // A window of another app (RecordEverythingTestPasteApp) is on screen when the shortcut fires and gone
+            // before the area is confirmed – like a menu that closes when the overlay takes focus. The area must
+            // still show it, because it is cut from the screen as it was at the shortcut.
+            guard let path = UserDefaults.standard.string(forKey: "RecordEverythingTestPasteApp"),
+                  let helper = try? await NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: .init()) else {
+                result["ok"] = false
+                result["error"] = "RecordEverythingTestPasteApp missing"
+                break
+            }
+            try? await Task.sleep(for: .seconds(1.5))
+            let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+            guard let info = list.first(where: { ($0[kCGWindowOwnerPID as String] as? pid_t) == helper.processIdentifier && ($0[kCGWindowLayer as String] as? Int) == 0 }),
+                  let dict = info[kCGWindowBounds as String] as? NSDictionary, let global = CGRect(dictionaryRepresentation: dict),
+                  let screen = NSScreen.screens.first(where: { CGDisplayBounds($0.displayID).intersects(global) }) else {
+                helper.terminate()
+                result["ok"] = false
+                result["error"] = "test window not found"
+                break
+            }
+            let display = CGDisplayBounds(screen.displayID)
+            let rect = global.offsetBy(dx: -display.minX, dy: -display.minY)
+            var captured: CGImage?
+            SelectionOverlay.shared.begin(mode: .screenshot, onConfirm: { _, _ in captured = SelectionOverlay.shared.confirmedImage }, onCancel: {})
+            try? await Task.sleep(for: .seconds(1.5))
+            helper.terminate()  // the "menu" disappears
+            try? await Task.sleep(for: .seconds(1))
+            SelectionOverlay.shared.selectForTest(rect, displayID: screen.displayID)
+            let live = try? await Screenshots.capture(ScreenTarget(displayID: screen.displayID, rect: rect, backingScale: screen.backingScaleFactor))
+            var checks: [String: Bool] = [:]
+            checks["frozenImage"] = captured != nil
+            if let captured {
+                checks["size"] = abs(CGFloat(captured.width) - rect.width * screen.backingScaleFactor) <= 2
+                let out = (UserDefaults.standard.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "x")
+                try? Screenshots.pngData(captured)?.write(to: URL(fileURLWithPath: out + ".frozen.png"))
+                if let live { try? Screenshots.pngData(live)?.write(to: URL(fileURLWithPath: out + ".live.png")) }
+                result["frozenSize"] = "\(captured.width)x\(captured.height)"
+            }
+            result["checks"] = checks
+            result["ok"] = checks.values.allSatisfy { $0 }
         case "note":
             // The note: ⌘V takes clipboard text (Wispr Flow's way of delivering dictation), voice commands are
             // recognized, and a recording is transcribed (RecordEverythingTestOpenRouterURL: a stand-in server;

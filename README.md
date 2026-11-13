@@ -13,7 +13,9 @@ Mikrofon mitschneiden, Aufnahmen in einer Bibliothek verwalten, abspielen und sc
 - **Screenshot & markieren** (⌘→): Bereich aufziehen oder Fenster anklicken, dann Editor mit Pfeil,
   Rechteck, Ellipse, Marker, Stift, Text, Verpixeln und Zuschneiden; danach „Hochladen“ (Link in die
   Zwischenablage) oder „Kopieren“ (Bild in die Zwischenablage, auch ⌘C). Der Editor startet mit dem
-  zuletzt benutzten Werkzeug, anfangs dem Pfeil.
+  zuletzt benutzten Werkzeug, anfangs dem Pfeil. Beim Drücken des Kürzels wird der Bildschirm eingefroren:
+  Offene Menüs, Dropdowns und Tooltips bleiben sichtbar und landen im Bild, obwohl die Bereichsauswahl den
+  Fokus übernimmt. Ein angeklicktes Fenster wird weiterhin einzeln aufgenommen.
 - **Direkt einfügen**: ⌘X im Editor kopiert das Bild, wechselt zurück in die App, die vor dem Screenshot
   vorne war (etwa Claude), und fügt es dort ins Eingabefeld ein. Unter Einstellungen › „Einfügen in“
   lassen sich feste Ziele mit eigenem Kürzel anlegen (ab Werk Claude ⌘1, Codex ⌘2, T3 Code ⌘3, soweit
@@ -177,7 +179,8 @@ open "build/Record Everything.app" --args -RecordEverythingSelfTest screen -Reco
 ```
 
 Modi: `screen`, `region`, `pause`, `audio`, `screenshot`, `upload`, `files`, `drop`, `drophint`, `annotate`,
-`annotatecopy`, `paste`, `note` (⌘V in die Notiz, Sprachbefehle; mit `-RecordEverythingTestAudio <WAV>` und
+`annotatecopy`, `paste`, `frozen` (Bereich aus dem eingefrorenen Bildschirm, mit
+`-RecordEverythingTestPasteApp`), `note` (⌘V in die Notiz, Sprachbefehle; mit `-RecordEverythingTestAudio <WAV>` und
 `-RecordEverythingTestOpenRouterURL` auch die Transkription gegen einen Ersatz-Server),
 `popover`, `preview`,
 `settings`, `voicemix` (Ton einer vorhandenen Datei rendern: `-RecordEverythingSelfTestInput <Datei>`,

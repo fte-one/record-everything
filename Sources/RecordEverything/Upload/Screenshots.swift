@@ -43,9 +43,16 @@ enum Screenshots {
             return
         }
         SelectionOverlay.shared.begin(mode: .screenshot, onConfirm: { target, _ in
+            // An area comes from the screen as it was when the shortcut was pressed (open menus included);
+            // a clicked window is captured on its own.
+            let frozen = SelectionOverlay.shared.confirmedImage
             Task {
                 do {
-                    handle(try await capture(target))
+                    if let frozen {
+                        handle(frozen)
+                    } else {
+                        handle(try await capture(target))
+                    }
                 } catch {
                     Toast.shared.show(L("Screenshot failed") + ": " + error.localizedDescription,
                                       symbol: "xmark.octagon.fill", style: .error, duration: 5)
