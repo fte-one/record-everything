@@ -69,6 +69,10 @@ final class AppSettings: ObservableObject {
     @Published var feedbackInstructions: String {
         didSet { defaults.set(feedbackInstructions, forKey: "feedbackInstructions") }
     }
+    /// How the screenshots reach the agent: pasted as images (default) or as file paths.
+    @Published var feedbackImageMode: FeedbackImageMode {
+        didSet { defaults.set(feedbackImageMode.rawValue, forKey: "feedbackImageMode") }
+    }
     /// Pressing both keys of this modifier starts and ends a feedback session (default: both ⌘).
     @Published var feedbackTrigger: DoubleModifier {
         didSet {
@@ -113,6 +117,7 @@ final class AppSettings: ObservableObject {
         feedbackModel = defaults.string(forKey: "feedbackModel") ?? Self.defaultFeedbackModel
         feedbackMaxImages = defaults.object(forKey: "feedbackMaxImages") as? Int ?? 20
         feedbackInstructions = defaults.string(forKey: "feedbackInstructions") ?? ""
+        feedbackImageMode = defaults.string(forKey: "feedbackImageMode").flatMap(FeedbackImageMode.init(rawValue:)) ?? .attachments
         feedbackTrigger = defaults.string(forKey: "feedbackTrigger").flatMap(DoubleModifier.init(rawValue:)) ?? .command
         upload = Self.load("upload") ?? UploadSettings()
         showDockIcon = defaults.object(forKey: "showDockIcon") as? Bool ?? false

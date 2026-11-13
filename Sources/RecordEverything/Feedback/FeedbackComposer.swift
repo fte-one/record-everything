@@ -17,6 +17,8 @@ struct FeedbackResult {
     let duration: TimeInterval
     /// Set when the AI summary was not available and the prompt is the plain protocol.
     let warning: String?
+    /// Attachments: pasting puts the images into the input field before the prompt.
+    var imageMode: FeedbackImageMode = .paths
 }
 
 /// Turns a recorded session into a prompt for a coding agent. An AI model (OpenRouter) reads the timeline and
@@ -29,6 +31,7 @@ enum FeedbackComposer {
         var maxImages: Int
         var extraInstructions: String
         var outputRoot: URL
+        var imageMode: FeedbackImageMode = .attachments
     }
 
     /// Most stills the AI gets to choose from.
@@ -79,6 +82,9 @@ enum FeedbackComposer {
             for part in recording.speech { if let shot = nearestShot(to: part, in: candidates) { use(shot.id) } }
             if order.isEmpty { candidates.filter { $0.kind != .change }.prefix(options.maxImages).forEach { use($0.id) } }
         }
+        // Numbers follow the recording: Bild 3 is the third moment shown.
+        let time = Dictionary(candidates.map { ($0.id, $0.time) }, uniquingKeysWith: { a, _ in a })
+        order.sort { (time[$0] ?? 0, $0) < (time[$1] ?? 0, $1) }
 
         guard let folder = makeOutputFolder(options.outputRoot, date: recording.startDate) else { return nil }
         var images: [FeedbackResult.Image] = []
@@ -94,8 +100,18 @@ enum FeedbackComposer {
         let markdown = writeMarkdown(recording, plan: plan, images: images, options: options, folder: folder, warning: warning)
         let markdownFile = folder.appendingPathComponent("feedback.md")
         try? markdown.write(to: markdownFile, atomically: true, encoding: .utf8)
+        let title = plan?.title.isEmpty == false ? plan!.title : recording.windowTitle
+        let meta = FeedbackMeta(title: title, date: recording.startDate, duration: recording.duration, taskCount: plan?.tasks.count ?? 0,
+                                warning: warning, imageMode: options.imageMode,
+                                images: images.map { .init(number: $0.number, file: $0.file.lastPathComponent, time: $0.shot.time,
+                                                           url: $0.shot.url, title: $0.shot.title) })
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try? encoder.encode(meta).write(to: folder.appendingPathComponent(FeedbackMeta.fileName))
         return FeedbackResult(folder: folder, markdownFile: markdownFile, markdown: markdown, images: images,
-                              taskCount: plan?.tasks.count ?? 0, duration: recording.duration, warning: warning)
+                              taskCount: plan?.tasks.count ?? 0, duration: recording.duration, warning: warning,
+                              imageMode: options.imageMode)
     }
 
     // MARK: Candidates
@@ -109,6 +125,7 @@ enum FeedbackComposer {
             switch shot.kind {
             case .mark: s = 40
             case .selection: s = 30
+            case .hover: s = 18
             case .click: s = 20
             case .start: s = 15
             case .change: s = 10
@@ -123,19 +140,23 @@ enum FeedbackComposer {
         return ranked.prefix(candidateLimit).map(\.element).sorted { $0.time < $1.time }
     }
 
-    /// The still that best shows what a piece of speech is about: one the user pointed at while talking, else
-    /// the view on screen when they started.
+    /// The still that best shows what a piece of speech is about: one the user pointed at while talking (closest
+    /// to the middle of the piece), else the view on screen when they started.
     static func nearestShot(to part: FeedbackSpeech, in shots: [FeedbackShot]) -> FeedbackShot? {
-        let during = shots.filter { $0.time >= part.start - 2 && $0.time <= part.end + 1 }
-        if let pointed = during.max(by: { rank($0.kind) < rank($1.kind) }), rank(pointed.kind) > rank(.change) { return pointed }
-        return shots.last(where: { $0.time <= part.start + 1 }) ?? during.first ?? shots.first
+        let middle = (part.start + part.end) / 2
+        let pointed = shots.filter { $0.time >= part.start - 0.5 && $0.time <= part.end + 1.5 && rank($0.kind) > 1 }
+        if let best = pointed.min(by: { a, b in
+            rank(a.kind) != rank(b.kind) ? rank(a.kind) > rank(b.kind) : abs(a.time - middle) < abs(b.time - middle)
+        }) { return best }
+        return shots.last(where: { $0.time <= part.start + 1 })
+            ?? shots.first(where: { $0.time >= part.start - 0.5 && $0.time <= part.end + 1.5 }) ?? shots.first
     }
 
     private static func rank(_ kind: FeedbackShot.Kind) -> Int {
         switch kind {
         case .mark: return 4
         case .selection: return 3
-        case .click: return 2
+        case .click, .hover: return 2
         case .start, .change: return 1
         }
     }
@@ -153,8 +174,13 @@ enum FeedbackComposer {
     - Sei konkret: Auf welcher Seite (URL), welches Element (so beschrieben, dass man es im Code findet: Beschriftung, \
     Position, Farbe, Art), was ist jetzt falsch, was soll stattdessen sein.
     - Erfinde nichts. Was sich aus der Aufnahme nicht klar ergibt, kommt als offene Frage.
+    - Das Transkript stammt aus einer Spracherkennung und kann Hörfehler enthalten (z. B. "Sportschau" statt \
+    "Sport-Show"). Korrigiere sie anhand der Beschriftungen auf den Bildern und nenne Elemente so, wie sie dort stehen.
+    - "hier", "das da", "dieser": gemeint ist die markierte Stelle im Bild zu diesem Zeitpunkt.
     - Bilder: Gib pro Aufgabe die 1 bis 3 aussagekräftigsten Bilder an (Kennungen wie "K12"). Rote Kreise sind \
-    Klickstellen, rote Rahmen markierte Bereiche. Nutze vor allem Bilder, auf die sich das Gesagte bezieht.
+    Klickstellen, gelbe Kreise die Stelle, auf die die Maus beim Sprechen zeigte, rote Rahmen markierte Bereiche. \
+    Nutze vor allem Bilder, auf die sich das Gesagte bezieht.
+    - summary: nur worum es insgesamt geht, sachlich und ohne Bewertung der Aussagen. Unklares gehört in questions.
     - quotes: kurze wörtliche Zitate des Gesagten, wenn sie die Absicht klarer machen.
     - Schreib auf Deutsch.
 
@@ -177,6 +203,7 @@ enum FeedbackComposer {
             case .click: line += "Klick (roter Kreis)"
             case .selection: line += "Bereich markiert (roter Rahmen)" + (shot.selectedText.map { ", markierter Text: „\($0)“" } ?? "")
             case .mark: line += "vom Nutzer mit „Merken“ festgehalten"
+            case .hover: line += "Maus zeigt beim Sprechen hierhin (gelber Kreis)"
             case .change: line += "Ansicht hat sich geändert"
             }
             lines.append((shot.time, 1, line))
@@ -253,8 +280,15 @@ enum FeedbackComposer {
         if let summary = plan?.summary, !summary.isEmpty { md.append(summary); md.append("") }
         md.append("> Aufgenommen am \(date) · \(feedbackClock(recording.duration)) Min. · \(recording.appName)")
         if !images.isEmpty {
-            md.append("> Screenshots im Ordner `\(folder.path)`: Bild N ist `NN.png`, die Nummer steht oben links im Bild. "
-                      + "Rote Kreise sind Klicks, rote Rahmen markierte Bereiche. Sieh dir die Bilder an, bevor du etwas änderst.")
+            let legend = "Rote Kreise sind Klicks, gelbe Kreise zeigen, wohin die Maus beim Sprechen zeigte, rote Rahmen sind "
+                + "markierte Bereiche. Sieh dir die Bilder an, bevor du etwas änderst."
+            switch options.imageMode {
+            case .attachments:
+                md.append("> Die \(images.count) Screenshots hängen dieser Nachricht als Bilder an, in der Reihenfolge Bild 1 bis "
+                          + "Bild \(images.count); die Nummer steht zusätzlich oben links im Bild. " + legend)
+            case .paths:
+                md.append("> Screenshots im Ordner `\(folder.path)`: Bild N ist `NN.png`, die Nummer steht oben links im Bild. " + legend)
+            }
         }
         if let warning { md.append(">"); md.append("> ⚠️ \(warning)") }
         md.append("")
@@ -267,7 +301,7 @@ enum FeedbackComposer {
                 md.append("")
                 if !task.description.isEmpty { md.append(task.description); md.append("") }
                 if let url = task.url { md.append("- Seite: \(url)") }
-                let refs = task.images.compactMap { byShot[$0] }.map(link)
+                let refs = task.images.compactMap { byShot[$0] }.sorted { $0.number < $1.number }.map(link)
                 if !refs.isEmpty { md.append("- Bilder: " + refs.joined(separator: ", ")) }
                 for quote in task.quotes { md.append("- O-Ton: „\(quote)“") }
                 md.append("")
@@ -293,7 +327,9 @@ enum FeedbackComposer {
             md.append("")
             for image in images {
                 let shot = image.shot
-                var line = "- Bild \(image.number): `\(image.file.path)` · \(feedbackClock(shot.time))"
+                var line = options.imageMode == .paths
+                    ? "- Bild \(image.number): `\(image.file.path)` · \(feedbackClock(shot.time))"
+                    : "- Bild \(image.number) · \(feedbackClock(shot.time))"
                 if let url = shot.url { line += " · \(url)" } else if let title = shot.title, !title.isEmpty { line += " · \(title)" }
                 if let text = shot.selectedText { line += " · markiert: „\(text)“" }
                 md.append(line)
@@ -304,12 +340,12 @@ enum FeedbackComposer {
         // The full protocol: nothing the AI left out is lost.
         md.append(plan == nil ? "## Protokoll" : "## Protokoll (vollständig)")
         md.append("")
-        var entries: [(TimeInterval, String)] = []
+        var entries: [(time: TimeInterval, order: Int, line: String)] = []
         var lastURL: String?
         for page in recording.pages where page.url != lastURL || page.url == nil {
             lastURL = page.url
             let label = [page.title.isEmpty ? nil : page.title, page.url].compactMap { $0 }.joined(separator: " – ")
-            entries.append((page.time, "- \(feedbackClock(page.time)) · Seite: \(label.isEmpty ? "?" : label)"))
+            entries.append((page.time, 0, "- \(feedbackClock(page.time)) · Seite: \(label.isEmpty ? "?" : label)"))
         }
         for part in recording.speech {
             var line = "- \(feedbackClock(part.start)) · „\(part.text)“"
@@ -317,10 +353,11 @@ enum FeedbackComposer {
                abs(shot.time - part.start) < 12 || (shot.time >= part.start && shot.time <= part.end) {
                 line += " → \(link(image))"
             }
-            entries.append((part.start, line))
+            entries.append((part.start, 1, line))
         }
-        if recording.speech.isEmpty { entries.append((0, "- (Nichts gesagt oder nicht in Text umgewandelt.)")) }
-        md.append(contentsOf: entries.sorted { $0.0 < $1.0 }.map(\.1))
+        if recording.speech.isEmpty { entries.append((0, 1, "- (Nichts gesagt oder nicht in Text umgewandelt.)")) }
+        // A page change and speech in the same second: the page first.
+        md.append(contentsOf: entries.sorted { (Int($0.time), $0.order, $0.time) < (Int($1.time), $1.order, $1.time) }.map(\.line))
         md.append("")
         return md.joined(separator: "\n")
     }
@@ -348,6 +385,20 @@ enum FeedbackComposer {
             ctx.setLineWidth(5 * unit)
             ctx.strokeEllipse(in: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r))
             ctx.setFillColor(red)
+            ctx.fillEllipse(in: CGRect(x: p.x - 4 * unit, y: p.y - 4 * unit, width: 8 * unit, height: 8 * unit))
+        case .pointer(let p):
+            let yellow = CGColor(srgbRed: 1, green: 0.78, blue: 0.05, alpha: 1)
+            let r = 24 * unit
+            let circle = CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)
+            ctx.setFillColor(yellow.copy(alpha: 0.2)!)
+            ctx.fillEllipse(in: circle)
+            ctx.setStrokeColor(CGColor(gray: 0, alpha: 0.55))   // dark rim: visible on light pages too
+            ctx.setLineWidth(8 * unit)
+            ctx.strokeEllipse(in: circle)
+            ctx.setStrokeColor(yellow)
+            ctx.setLineWidth(5 * unit)
+            ctx.strokeEllipse(in: circle)
+            ctx.setFillColor(yellow)
             ctx.fillEllipse(in: CGRect(x: p.x - 4 * unit, y: p.y - 4 * unit, width: 8 * unit, height: 8 * unit))
         case .selection(let rect):
             let r = rect.insetBy(dx: -6 * unit, dy: -6 * unit)

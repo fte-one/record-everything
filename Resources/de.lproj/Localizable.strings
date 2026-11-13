@@ -309,3 +309,8 @@
 "Both ⇧ keys" = "Beide ⇧-Tasten";
 "Both ⌥ keys" = "Beide ⌥-Tasten";
 "Press both keys at the same time, left and right." = "Linke und rechte Taste gleichzeitig drücken.";
+"Paste as images (works over SSH too)" = "Als Bilder einfügen (geht auch per SSH)";
+"File paths (agent on this Mac only)" = "Als Dateipfade (nur Agent auf diesem Mac)";
+"No feedback sessions yet" = "Noch keine Feedback-Sessions";
+"Copy prompt" = "Prompt kopieren";
+"Move to Trash" = "In den Papierkorb legen";

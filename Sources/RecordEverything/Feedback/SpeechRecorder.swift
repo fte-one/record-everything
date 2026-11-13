@@ -27,7 +27,8 @@ final class SpeechRecorder {
 
     /// Below this level (dBFS) counts as a pause.
     private let silence: Float = -42
-    private let minChunk: TimeInterval = 6
+    /// Short pieces keep what was said close to what was on screen at that moment.
+    private let minChunk: TimeInterval = 3
     private let maxChunk: TimeInterval = 40
 
     init(folder: URL, clock: @escaping () -> TimeInterval) {
@@ -115,6 +116,10 @@ final class SpeechRecorder {
     }
 
     private var lastRetry = Date.distantPast
+    private var lastVoice = Date.distantPast
+
+    /// Someone spoke within the last moment.
+    var isSpeaking: Bool { Date().timeIntervalSince(lastVoice) < 1.5 }
 
     private func tick() {
         guard let recorder else {
@@ -134,11 +139,12 @@ final class SpeechRecorder {
             if silenceSince == nil { silenceSince = now }
         } else {
             silenceSince = nil
+            lastVoice = Date()
         }
         let length = now - chunkStart
         let pause = silenceSince.map { now - $0 } ?? 0
         // Cut at a pause once the piece is long enough; force a cut before the provider's time limit.
-        if (length >= minChunk && pause >= 0.7) || length >= maxChunk {
+        if (length >= minChunk && pause >= 0.6) || length >= maxChunk {
             finishChunk()
             beginChunk()
         }

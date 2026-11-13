@@ -3,11 +3,13 @@ import CoreGraphics
 
 /// One still of the recorded window, taken at a click, a selection, the "Mark" button or when the page changed.
 struct FeedbackShot: Identifiable, Equatable {
-    enum Kind: String { case start, click, selection, mark, change }
+    enum Kind: String { case start, click, selection, mark, change, hover }
     /// Where something happened, in image pixels (origin top left).
     enum Marker: Equatable {
         case click(CGPoint)
         case selection(CGRect)
+        /// Where the pointer rested while the user was talking ("this here").
+        case pointer(CGPoint)
     }
 
     let id: Int
@@ -37,6 +39,26 @@ struct FeedbackPage: Equatable {
     let time: TimeInterval
     let url: String?
     let title: String
+}
+
+/// How the screenshots reach the coding agent.
+enum FeedbackImageMode: String, Codable, CaseIterable, Identifiable {
+    /// Pasted into the input field as images: the model sees them wherever the agent runs (also over SSH).
+    case attachments
+    /// Only the file paths in the prompt: the agent reads them itself (same Mac only).
+    case paths
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .attachments: return L("Paste as images (works over SSH too)")
+        case .paths: return L("File paths (agent on this Mac only)")
+        }
+    }
+
+    /// Most images one message takes (Claude: 20 attachments).
+    static let attachmentLimit = 20
 }
 
 /// Everything a finished session hands to the composer.

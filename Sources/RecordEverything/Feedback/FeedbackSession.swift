@@ -34,6 +34,12 @@ final class FeedbackSession: ObservableObject {
     private var speech: SpeechRecorder?
     private var tick: Timer?
     private var tickCount = 0
+    private var pointerTimer: Timer?
+    /// Where the pointer rests and since when; `taken` once a still was made for it.
+    private var dwell: (point: CGPoint, since: Date, taken: Bool)?
+    private var lastHoverShot = Date.distantPast
+    /// The self-test has no microphone: resting the pointer counts without speech.
+    private var hoverNeedsSpeech = true
     private var mouseMonitor: Any?
 
     private var shots: [FeedbackShot] = []
@@ -188,6 +194,12 @@ final class FeedbackSession: ObservableObject {
         tick = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.onTick() }
         }
+        dwell = nil
+        lastHoverShot = .distantPast
+        hoverNeedsSpeech = testAudio == nil
+        pointerTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.samplePointer() }
+        }
         pollPage()
         FeedbackChrome.shared.show(around: bounds)
         return true
@@ -234,14 +246,17 @@ final class FeedbackSession: ObservableObject {
             let settings = AppSettings.shared
             let options = FeedbackComposer.Options(
                 model: settings.feedbackModel.isEmpty ? AppSettings.defaultFeedbackModel : settings.feedbackModel,
-                maxImages: settings.feedbackMaxImages,
+                maxImages: settings.feedbackImageMode == .attachments
+                    ? min(settings.feedbackMaxImages, FeedbackImageMode.attachmentLimit) : settings.feedbackMaxImages,
                 extraInstructions: settings.feedbackInstructions,
                 outputRoot: UserDefaults.standard.string(forKey: "RecordEverythingTestFeedbackOutput").map { URL(fileURLWithPath: $0) }
-                    ?? settings.saveFolder.appendingPathComponent("Feedback", isDirectory: true))
+                    ?? settings.saveFolder.appendingPathComponent("Feedback", isDirectory: true),
+                imageMode: settings.feedbackImageMode)
             let result = await FeedbackComposer.compose(recording, options: options)
             speech = nil
             FeedbackChrome.shared.hide()
             state = .idle
+            FeedbackHistory.shared.reload()
             if let result { FeedbackReview.show(result) }
         }
     }
@@ -266,6 +281,9 @@ final class FeedbackSession: ObservableObject {
     private func tearDownInput() {
         tick?.invalidate()
         tick = nil
+        pointerTimer?.invalidate()
+        pointerTimer = nil
+        dwell = nil
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
         mouseMonitor = nil
         down = nil
@@ -362,6 +380,7 @@ final class FeedbackSession: ObservableObject {
             let inside = current.contains(p) && NSWorkspace.shared.frontmostApplication?.processIdentifier == appPID
             // The picture before the click: what the user pointed at.
             down = (p, current, inside ? grabber?.snapshot() : nil, inside)
+            dwell = (p, Date(), true)
         case .leftMouseUp:
             guard let d = down, d.inside else { down = nil; return }
             down = nil
@@ -389,6 +408,28 @@ final class FeedbackSession: ObservableObject {
         }
     }
 
+    // MARK: Pointer
+
+    /// "Was ist das hier?": when the pointer rests on a spot while the user talks, keep a still with the spot marked.
+    private func samplePointer() {
+        guard state == .running, down == nil else { return }
+        let p = WindowGeometry.cgPoint(NSEvent.mouseLocation)
+        guard bounds.contains(p), NSWorkspace.shared.frontmostApplication?.processIdentifier == appPID else {
+            dwell = nil
+            return
+        }
+        guard let d = dwell, hypot(p.x - d.point.x, p.y - d.point.y) < 14 else {
+            dwell = (p, Date(), false)
+            return
+        }
+        guard !d.taken, Date().timeIntervalSince(d.since) >= 1.0, Date().timeIntervalSince(lastHoverShot) >= 1.5,
+              !hoverNeedsSpeech || speech?.isSpeaking == true, let still = grabber?.snapshot() else { return }
+        dwell?.taken = true
+        lastHoverShot = Date()
+        let size = CGSize(width: still.image.width, height: still.image.height)
+        takeShot(.hover, still: still, marker: .pointer(pixel(d.point, image: size, in: bounds)))
+    }
+
     // MARK: Accessibility: page and selection
 
     private var webArea: AXUIElement?
@@ -399,7 +440,7 @@ final class FeedbackSession: ObservableObject {
         // A hanging app must not stall the session (the default timeout is several seconds).
         AXUIElementSetMessagingTimeout(axApp, 0.25)
         guard let window = matchingWindow(axApp) else { return }
-        let title: String = AX.value(window, kAXTitleAttribute) ?? ""
+        let title = Self.cleanTitle(AX.value(window, kAXTitleAttribute) ?? "", appName: appName)
         var url = webArea.flatMap(Self.url(of:))
         if url == nil, Date() >= noWebAreaUntil {
             webArea = findWebArea(in: window)
@@ -427,6 +468,15 @@ final class FeedbackSession: ObservableObject {
             queue.append(contentsOf: AX.value(element, kAXChildrenAttribute) as [AXUIElement]? ?? [])
         }
         return nil
+    }
+
+    /// "Shop | MyShow - Google Chrome - Ortwin (Work)" → "Shop | MyShow".
+    static func cleanTitle(_ title: String, appName: String) -> String {
+        guard !appName.isEmpty else { return title }
+        for separator in [" - ", " – ", " — "] {
+            if let range = title.range(of: separator + appName) { return String(title[..<range.lowerBound]) }
+        }
+        return title
     }
 
     private static func url(of webArea: AXUIElement) -> String? {

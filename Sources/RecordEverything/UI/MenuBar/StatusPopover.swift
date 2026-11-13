@@ -8,6 +8,7 @@ struct StatusPopoverView: View {
     @ObservedObject private var library = MediaLibrary.shared
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var uploads = UploadManager.shared
+    @ObservedObject private var feedbacks = FeedbackHistory.shared
     @AppStorage("popoverListTab") private var listTab = "uploads"
     var listHeight: CGFloat = 300
     let dismiss: () -> Void
@@ -64,6 +65,7 @@ struct StatusPopoverView: View {
                     PillTabs(selection: $listTab, items: [
                         ("uploads", L("Uploads"), history.records.count),
                         ("recordings", L("Recordings"), library.items.count),
+                        ("feedback", L("Feedback"), feedbacks.items.count),
                     ])
                 }
                 ScrollView {
@@ -71,6 +73,9 @@ struct StatusPopoverView: View {
                         if listTab == "uploads" {
                             if history.records.isEmpty { emptyList("icloud.and.arrow.up", L("No uploads yet")) }
                             ForEach(history.records.prefix(max(settings.upload.historyCount, 20))) { UploadRow(record: $0) }
+                        } else if listTab == "feedback" {
+                            if feedbacks.items.isEmpty { emptyList("bubble.left.and.text.bubble.right", L("No feedback sessions yet")) }
+                            ForEach(feedbacks.items) { FeedbackRow(item: $0, dismiss: dismiss) }
                         } else {
                             if library.items.isEmpty { emptyList("film.stack", L("No Videos")) }
                             ForEach(library.items) { RecordingRow(item: $0, dismiss: dismiss) }
@@ -79,6 +84,7 @@ struct StatusPopoverView: View {
                     .padding(4)
                 }
                 .frame(height: listHeight)
+                .onAppear { feedbacks.reload() }
                 .background(RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.28)))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.06)))
             }
@@ -528,6 +534,68 @@ private struct UploadRow: View {
     private func copyLink() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(record.url.absoluteString, forType: .string)
+    }
+}
+
+/// One saved feedback session: reopen the review, copy the prompt, show the folder.
+private struct FeedbackRow: View {
+    let item: FeedbackHistory.Item
+    let dismiss: () -> Void
+    @State private var hover = false
+    @State private var copied = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button { open() } label: {
+                Group {
+                    if let thumbnail = item.thumbnail {
+                        Image(nsImage: thumbnail).resizable().aspectRatio(contentMode: .fill)
+                    } else {
+                        Image(systemName: "bubble.left.and.text.bubble.right").foregroundStyle(Theme.secondary)
+                    }
+                }
+                .frame(width: 52, height: 34)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .background(RoundedRectangle(cornerRadius: 4).fill(Color.black.opacity(0.3)))
+            }
+            .buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.title).font(.system(size: 12, weight: .medium)).lineLimit(1).truncationMode(.tail)
+                Text(subtitle).font(.system(size: 10)).foregroundStyle(Theme.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            IconButton(symbol: copied ? "checkmark" : "doc.on.doc", size: 26, help: L("Copy prompt"), tint: copied ? Theme.accent : .white) {
+                FeedbackHistory.shared.copyPrompt(item)
+                copied = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { copied = false }
+            }
+            IconButton(symbol: "arrow.up.forward.app", size: 26, help: L("Open")) { open() }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(RoundedRectangle(cornerRadius: 7).fill(hover ? Color.white.opacity(0.06) : .clear))
+        .contentShape(Rectangle())
+        .onHover { hover = $0 }
+        .contextMenu {
+            Button(L("Open")) { open() }
+            Button(L("Copy prompt")) { FeedbackHistory.shared.copyPrompt(item) }
+            Button(L("Show in Finder")) { FeedbackHistory.shared.showInFinder(item) }
+            Divider()
+            Button(L("Move to Trash")) { FeedbackHistory.shared.trash(item) }
+        }
+    }
+
+    private var subtitle: String {
+        var parts = [item.date.formatted(.relative(presentation: .named))]
+        if let duration = item.duration { parts.append(feedbackClock(duration) + " " + L("min")) }
+        parts.append(String(format: L("%d screenshots"), item.imageCount))
+        return parts.joined(separator: " · ")
+    }
+
+    private func open() {
+        dismiss()
+        FeedbackHistory.shared.open(item)
     }
 }
 

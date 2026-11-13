@@ -460,6 +460,10 @@ private struct FeedbackSettings: View {
     @ObservedObject private var settings = AppSettings.shared
     @State private var trusted = PasteIntoApp.isTrusted
 
+    private var shownMaxImages: Int {
+        settings.feedbackImageMode == .attachments ? min(settings.feedbackMaxImages, FeedbackImageMode.attachmentLimit) : settings.feedbackMaxImages
+    }
+
     private static let suggestedModels = [
         "anthropic/claude-sonnet-5.5", "anthropic/claude-opus-5.5", "google/gemini-3.8-flash", "google/gemini-4-carbon",
     ]
@@ -503,7 +507,15 @@ private struct FeedbackSettings: View {
                 }
                 GridRow {
                     settingsLabel(L("Screenshots:"))
-                    Stepper(String(format: L("at most %d"), settings.feedbackMaxImages), value: $settings.feedbackMaxImages, in: 5...40)
+                    HStack(spacing: 12) {
+                        Picker("", selection: $settings.feedbackImageMode) {
+                            ForEach(FeedbackImageMode.allCases) { Text($0.title).tag($0) }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        Stepper(String(format: L("at most %d"), shownMaxImages), value: $settings.feedbackMaxImages,
+                                in: 5...(settings.feedbackImageMode == .attachments ? FeedbackImageMode.attachmentLimit : 40))
+                    }
                 }
                 GridRow(alignment: .top) {
                     settingsLabel(L("Extra instructions:"))

@@ -86,6 +86,43 @@ enum PasteIntoApp {
         await paste(image: image, text: text, into: running, bundleID: bundleID, name: name)
     }
 
+    /// Pastes several images one after another, then the text (feedback prompt with attached screenshots).
+    @discardableResult
+    static func pasteImages(_ files: [URL], text: String, into running: NSRunningApplication?, bundleID: String?, name: String) async -> Bool {
+        let images = files.compactMap(ImageFiles.load)
+        guard let first = images.first else {
+            return await pasteText(text, into: running, bundleID: bundleID, name: name)
+        }
+        Screenshots.copy(first)
+        guard let app = await activate(running, bundleID: bundleID) else {
+            Toast.shared.show(String(format: L("Could not open %@"), name), detail: L("The image is on the clipboard."),
+                              symbol: "exclamationmark.triangle.fill", style: .error, duration: 4)
+            return false
+        }
+        guard isTrusted else {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            Toast.shared.show(L("Text copied – press ⌘V"), detail: L("Allow Accessibility access to paste automatically."),
+                              symbol: "doc.on.clipboard.fill", style: .success, duration: 4)
+            if !askedThisLaunch {
+                askedThisLaunch = true
+                requestPermission()
+            }
+            return false
+        }
+        await focusTextInput(in: app)
+        for (index, image) in images.enumerated() {
+            if index > 0 { Screenshots.copy(image) }
+            pressPaste(in: app)
+            // The app reads the clipboard asynchronously; give it time before the next image replaces it.
+            try? await Task.sleep(for: .milliseconds(550))
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        pressPaste(in: app)
+        return true
+    }
+
     /// Pastes text only (the feedback prompt).
     @discardableResult
     static func pasteText(_ text: String, into running: NSRunningApplication?, bundleID: String?, name: String) async -> Bool {

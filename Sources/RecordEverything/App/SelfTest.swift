@@ -495,8 +495,12 @@ enum SelfTest {
             checks["parsePlan"] = plan?.tasks.first?.images == [2, 3] && plan?.tasks.first?.url == nil && plan?.questions == ["?"]
 
             let d = UserDefaults.standard
+            let pasteLog = (d.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "x") + ".paste.log"
+            try? FileManager.default.removeItem(atPath: pasteLog)
+            let helperConfig = NSWorkspace.OpenConfiguration()
+            helperConfig.arguments = [pasteLog]
             guard let path = d.string(forKey: "RecordEverythingTestPasteApp"),
-                  let helper = try? await NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: .init()) else {
+                  let helper = try? await NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: helperConfig) else {
                 result["ok"] = false
                 result["error"] = "RecordEverythingTestPasteApp missing"
                 break
@@ -522,6 +526,10 @@ enum SelfTest {
                 try? await Task.sleep(for: .milliseconds(80))
             }
             try? await Task.sleep(for: .seconds(1))
+            // Resting the pointer on another spot ("was ist das hier?") keeps a still with that spot.
+            CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: CGPoint(x: bounds.minX + 60, y: bounds.midY),
+                    mouseButton: .left)?.post(tap: .cghidEventTap)
+            try? await Task.sleep(for: .seconds(1.6))
             session.mark()
             try? await Task.sleep(for: .seconds(1.5))
             let base = d.string(forKey: "RecordEverythingSelfTestOutput") ?? NSTemporaryDirectory() + "x"
@@ -533,9 +541,23 @@ enum SelfTest {
             result["shots"] = kinds.joined(separator: ",")
             checks["startShot"] = kinds.contains("start")
             checks["markShot"] = kinds.contains("mark")
-            if PasteIntoApp.isTrusted { checks["clickShot"] = kinds.contains("click") }
+            if PasteIntoApp.isTrusted {
+                checks["clickShot"] = kinds.contains("click")
+                checks["hoverShot"] = kinds.contains("hover")
+            }
+            checks["cleanTitle"] = FeedbackSession.cleanTitle("Ninja | MyShow - Google Chrome - Ortwin (OK Venture)", appName: "Google Chrome")
+                == "Ninja | MyShow"
             session.stop()
             for _ in 0..<120 where session.state != .idle { try? await Task.sleep(for: .seconds(0.5)) }
+            // Pasting the prompt with its screenshots as images: one paste per image, then the text.
+            if let feedback = FeedbackReview.lastResult, feedback.imageMode == .attachments, PasteIntoApp.isTrusted {
+                await PasteIntoApp.pasteImages(feedback.images.map(\.file), text: "Prompt", into: helper, bundleID: nil, name: "PasteTest")
+                try? await Task.sleep(for: .seconds(1))
+                let lines = ((try? String(contentsOfFile: pasteLog, encoding: .utf8)) ?? "").split(separator: "\n")
+                result["pasteLog"] = lines.map { String($0.prefix(90)) }
+                checks["pastedImages"] = lines.filter { $0.contains("public.png") }.count == feedback.images.count
+                checks["pastedTextLast"] = lines.last?.contains("text=Prompt") == true
+            }
             helper.terminate()
             guard let feedback = FeedbackReview.lastResult else {
                 checks["result"] = false
@@ -547,7 +569,12 @@ enum SelfTest {
             result["warning"] = feedback.warning ?? ""
             checks["markdown"] = FileManager.default.fileExists(atPath: feedback.markdownFile.path)
             checks["images"] = !feedback.images.isEmpty && feedback.images.allSatisfy { FileManager.default.fileExists(atPath: $0.file.path) }
-            checks["imageReference"] = feedback.markdown.contains("- Bild 1: `\(feedback.images.first?.file.path ?? "-")`")
+            checks["chronological"] = zip(feedback.images, feedback.images.dropFirst()).allSatisfy { $0.shot.time <= $1.shot.time }
+            checks["imageReference"] = feedback.imageMode == .paths
+                ? feedback.markdown.contains("- Bild 1: `\(feedback.images.first?.file.path ?? "-")`")
+                : feedback.markdown.contains("hängen dieser Nachricht als Bilder an") && feedback.markdown.contains("- Bild 1 · ")
+                    && !feedback.markdown.contains(feedback.folder.path)
+            checks["reopen"] = FeedbackHistory.result(for: feedback.folder)?.images.count == feedback.images.count
             checks["transcript"] = feedback.markdown.contains("Der Rand fehlt hier")
             if d.bool(forKey: "RecordEverythingTestExpectFallback") {
                 // The AI failed: the prompt is the protocol, with the screenshot nearest to what was said.
@@ -555,7 +582,7 @@ enum SelfTest {
                 checks["fallbackProtocol"] = feedback.markdown.contains("## Protokoll") && feedback.markdown.contains("→ Bild 1")
             } else {
                 checks["aiTasks"] = feedback.taskCount == 1 && feedback.markdown.contains("### 1. Rand ergänzen")
-                    && feedback.markdown.contains("- Bilder: Bild 1")
+                    && feedback.markdown.contains("- Bilder: Bild ")
                 checks["noWarning"] = feedback.warning == nil
             }
             if let review = WindowManager.shared.window("feedback-\(feedback.folder.lastPathComponent)") {

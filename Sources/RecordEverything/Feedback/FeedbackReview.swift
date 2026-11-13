@@ -166,8 +166,15 @@ struct FeedbackReviewView: View {
     private func paste(into target: PasteTarget) {
         model.save()
         let text = model.markdown
+        let result = model.result
         close()
-        Task { await PasteIntoApp.pasteText(text, into: nil, bundleID: target.bundleID, name: target.name) }
+        Task {
+            if result.imageMode == .attachments, !result.images.isEmpty {
+                await PasteIntoApp.pasteImages(result.images.map(\.file), text: text, into: nil, bundleID: target.bundleID, name: target.name)
+            } else {
+                await PasteIntoApp.pasteText(text, into: nil, bundleID: target.bundleID, name: target.name)
+            }
+        }
     }
 
     /// A target's shortcut as a SwiftUI key equivalent (letters and digits only).
