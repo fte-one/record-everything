@@ -235,5 +235,5 @@ Vendor/       Sparkle (nicht eingecheckt, kommt von fetch-sparkle.sh)
 
 ---
 
-© 2026 [fte.one](https://fte.one) C/O OK Venture GmbH · [Impressum](https://fte.one/de/impressum/) ·
+© 2026 [FTE.ONE](https://fte.one) C/O OK Venture GmbH · [Impressum](https://fte.one/de/impressum/) ·
 Gemacht von Menschen & Agenten

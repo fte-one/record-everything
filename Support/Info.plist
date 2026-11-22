@@ -36,7 +36,7 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>© 2026 fte.one C/O OK Venture GmbH. All rights reserved.</string>
+	<string>© 2026 FTE.ONE C/O OK Venture GmbH. All rights reserved.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Record Everything uses the microphone to record your voice.</string>
 	<key>NSPrincipalClass</key>
