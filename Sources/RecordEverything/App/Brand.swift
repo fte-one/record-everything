@@ -2,7 +2,7 @@ import AppKit
 
 /// Publisher details, matching the fte.one website.
 enum Brand {
-    static let copyright = "© 2026 fte.one c/o OK Venture GmbH"
+    static let copyright = "© 2026 fte.one C/O OK Venture GmbH"
     static let website = URL(string: "https://fte.one")!
 
     /// Imprint page in the app's language (the site offers en, de, fr, es, pt, it).
